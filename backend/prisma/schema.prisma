@@ -1,0 +1,134 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  passwordHash String
+  name         String
+  role         String      // SUPER_ADMIN, ADMIN, INVENTORY_MANAGER, PRODUCTION_MANAGER, DISPATCH_TEAM, CUSTOMER_SUPPORT
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  stockLogs    StockLog[]
+  auditLogs    AuditLog[]
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id             String      @id @default(uuid())
+  name           String
+  sku            String      @unique
+  description    String?
+  price          Float
+  shelfLifeDays  Int
+  thresholdStock Int
+  imageUrl       String?
+  categoryId     String
+  category       Category    @relation(fields: [categoryId], references: [id])
+  batches        Batch[]
+  orderItems     OrderItem[]
+  stockLogs      StockLog[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model Batch {
+  id               String      @id // Format: SKU-YYYYMMDD-seq
+  productId        String
+  product          Product     @relation(fields: [productId], references: [id])
+  mfgDate          DateTime
+  expiryDate       DateTime
+  quantityProduced Int
+  packagingCount   Int
+  currentStock     Int
+  status           String      // ACTIVE, EXPIRED, EXHAUSTED, RECALLED
+  stockLogs        StockLog[]
+  orderItems       OrderItem[]
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String   @unique
+  email     String?
+  address   String?
+  orders    Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  orderNumber String      @unique // SS-YYYYMMDD-seq
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  status      String      // PENDING, CONFIRMED, PROCESSING, PACKED, DISPATCHED, DELIVERED, CANCELLED
+  totalAmount Float
+  items       OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id])
+  quantity  Int
+  price     Float
+  createdAt DateTime @default(now())
+}
+
+model StockLog {
+  id        String   @id @default(uuid())
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  type      String   // STOCK_IN, STOCK_OUT, WASTAGE, ADJUSTMENT
+  quantity  Int
+  notes     String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  action        String
+  entity        String
+  entityId      String
+  previousValue String?  // JSON string
+  newValue      String?  // JSON string
+  createdAt     DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String   // LOW_STOCK, NEAR_EXPIRY, ORDER_UPDATE, ADMIN_ALERT
+  message   String
+  channel   String   // EMAIL, SMS, WHATSAPP
+  status    String   // PENDING, SENT, FAILED
+  createdAt DateTime @default(now())
+}
