@@ -68,10 +68,15 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(`  SHARADHA STORES BACKEND API SERVER RUNNING ON PORT ${PORT}`);
-  console.log(`  http://localhost:${PORT}`);
-  console.log(`====================================================`);
-});
+// Start Server when run directly (keeps module safe for serverless wrappers)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`====================================================`);
+    console.log(`  SHARADHA STORES BACKEND API SERVER RUNNING ON PORT ${PORT}`);
+    console.log(`  http://localhost:${PORT}`);
+    console.log(`====================================================`);
+  });
+}
+
+// Export app for serverless wrapper and testing
+module.exports = app;
