@@ -169,6 +169,24 @@ def send_whatsapp_alert(phone_number, message):
         except Exception as e:
             print(f"Error reading .env dynamically: {str(e)}")
             
+    # Fallback to system environment variables (e.g. on Render)
+    if not green_api_instance_id:
+        green_api_instance_id = os.environ.get('GREEN_API_INSTANCE_ID')
+    if not green_api_token:
+        green_api_token = os.environ.get('GREEN_API_TOKEN')
+    if not telegram_token:
+        telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    if not telegram_chat_id:
+        telegram_chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+    if not twilio_sid:
+        twilio_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+    if not twilio_token:
+        twilio_token = os.environ.get('TWILIO_AUTH_TOKEN')
+    if not twilio_from:
+        twilio_from = os.environ.get('TWILIO_WHATSAPP_FROM')
+    if not callmebot_key:
+        callmebot_key = os.environ.get('CALLMEBOT_API_KEY')
+            
     # Try sending via Green API
     if green_api_instance_id and green_api_token:
         try:
@@ -306,6 +324,12 @@ def send_email_alert_async(recipient, message, html_message=None):
                                 alert_phone = val
         except Exception as e:
             print(f"Error reading ALERT_PHONE_NUMBER dynamically: {str(e)}")
+            
+    # Fallback to system environment variable (e.g. on Render)
+    if not alert_phone or alert_phone == "8125113073":
+        env_phone = os.environ.get('ALERT_PHONE_NUMBER')
+        if env_phone:
+            alert_phone = env_phone
             
     # Send WhatsApp alert asynchronously
     threading.Thread(target=send_whatsapp_alert, args=(alert_phone, message)).start()
