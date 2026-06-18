@@ -509,7 +509,8 @@ export default function App() {
       let reply = "";
       const lower = text.toLowerCase();
 
-      if (lower.includes('low stock') || lower.includes('out of stock') || lower.includes('threshold') || lower.includes('safety limit')) {
+      // 1. Stock / Inventory Queries
+      if (lower.includes('stock') || lower.includes('qty') || lower.includes('quantity') || lower.includes('threshold') || lower.includes('safety limit') || lower.includes('level')) {
         // Find products below safety threshold (5 units)
         const lowStock = products.filter(p => {
           const matchingBatches = batches.filter(b => b.product_id === p.product_id && (b.status === 'Active' || b.status === 'Near Expiry'));
@@ -529,7 +530,8 @@ export default function App() {
             "\n\n_Recommendation: Please schedule new production batches or order raw ingredients to replenish these items._";
         }
       } 
-      else if (lower.includes('expiry') || lower.includes('expire') || lower.includes('spoilage') || lower.includes('wasted')) {
+      // 2. Expiry / Spoilage Queries
+      else if (lower.includes('expir') || lower.includes('spoil') || lower.includes('waste') || lower.includes('fresh')) {
         // Find batches that are Expired or Near Expiry
         const nearExpiry = batches.filter(b => b.status === 'Near Expiry' && b.current_stock > 0);
         const expired = batches.filter(b => b.status === 'Expired' && b.current_stock > 0);
@@ -547,7 +549,8 @@ export default function App() {
           `⚠️ **Near Expiry Batches (Sell soon)**:\n${nearStr}\n\n` +
           `_Recommendation: Expired batches should be immediately discarded in the panel. Consider offering Combo Discounts or Flash Promotions on Near Expiry items._`;
       } 
-      else if (lower.includes('recipe') || lower.includes('pair') || lower.includes('cook') || lower.includes('eat') || lower.includes('serve')) {
+      // 3. Recipe / Cooking Suggestions
+      else if (lower.includes('recipe') || lower.includes('pair') || lower.includes('cook') || lower.includes('eat') || lower.includes('serve') || lower.includes('use') || lower.includes('make') || lower.includes('prepare') || lower.includes('dish')) {
         // Check if user mentions a specific product name
         const matchedProduct = products.find(p => lower.includes(p.name.toLowerCase()));
         if (matchedProduct) {
@@ -563,11 +566,12 @@ export default function App() {
           reply = "🍛 **Culinary & Serving Suggestions**:\nTo get custom suggestions, please specify the product name in your question! For example:\n- _'Suggest a recipe using Avakaya Mango Pickle'_\n- _'How to cook Instant Idli Mix?'_";
         }
       }
-      else if (lower.includes('price') || lower.includes('cost') || lower.includes('rate') || lower.includes('rs.')) {
+      // 4. Pricing / Cost Queries
+      else if (lower.includes('price') || lower.includes('cost') || lower.includes('rate') || lower.includes('rs.') || lower.includes('rupee') || lower.includes('how much') || lower.includes('pricing')) {
         const matchedProduct = products.find(p => lower.includes(p.name.toLowerCase()));
         if (matchedProduct) {
           const pricesStr = matchedProduct.prices && matchedProduct.prices.length > 0
-            ? matchedProduct.prices.map(pr => `• **${pr.pack_size}**: Rs. ${pr.price}`).join('\n')
+            ? matchedProduct.prices.map(pr => `• **${pr.quantity_description || pr.pack_size || 'Pack'}**: Rs. ${pr.price}`).join('\n')
             : "No pricing information available.";
           reply = `💰 **Pricing details for ${matchedProduct.name}**:\n\n${pricesStr}`;
         } else {
@@ -575,17 +579,21 @@ export default function App() {
             products.map(p => `• **${p.name}** starting from Rs. ${p.prices && p.prices.length > 0 ? p.prices[0].price : 'N/A'}`).join('\n');
         }
       }
-      else if (lower.includes('hello') || lower.includes('hi ') || lower.includes('hey') || lower.includes('how are you')) {
+      // 5. Greetings
+      else if (lower.includes('hello') || lower.includes('hi ') || lower.includes('hey') || lower.includes('how are you') || lower.includes('greetings')) {
         reply = "Hello! 👋 I am here and ready to help. You can ask me about stock status, product shelf life, expiry warnings, or cooking guides. What's on your mind?";
       }
+      // 6. Product Status Lookup
       else {
         // Check if user named a product, provide generic info
         const matchedProduct = products.find(p => lower.includes(p.name.toLowerCase()));
         if (matchedProduct) {
+          const matchingBatches = batches.filter(b => b.product_id === matchedProduct.product_id && (b.status === 'Active' || b.status === 'Near Expiry'));
+          const totalStock = matchingBatches.reduce((sum, b) => sum + b.current_stock, 0);
           reply = `ℹ️ **Details on ${matchedProduct.name}**:\n\n` +
             `• **Category**: ${matchedProduct.category_name || 'Homemade Food'}\n` +
             `• **Description**: ${matchedProduct.description || 'Premium homemade quality.'}\n` +
-            `• **Stock level**: ${batches.filter(b => b.product_id === matchedProduct.product_id && (b.status === 'Active' || b.status === 'Near Expiry')).reduce((sum, b) => sum + b.current_stock, 0)} units available.\n\n` +
+            `• **Stock level**: ${totalStock} units available.\n\n` +
             `Would you like to see pricing or recipes for this item? Just ask!`;
         } else {
           reply = "🤖 **Sharadha Stores Copilot**:\nI couldn't quite match that query to a specific command. You can ask me about:\n\n" +
