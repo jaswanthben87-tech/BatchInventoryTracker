@@ -1613,5 +1613,50 @@ body.light-theme .category-share-item:hover {
   padding-left: 0.85rem !important;
 }
 
+/* AI Assistant Dot Typing Indicator */
+.dot-typing-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  width: fit-content;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dot-typing {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--accent-primary);
+  display: inline-block;
+  animation: dotTyping 1.4s infinite ease-in-out both;
+}
+
+.dot-typing:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.dot-typing:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.dot-typing:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes dotTyping {
+  0%, 80%, 100% { 
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% { 
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+
 
 

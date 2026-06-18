@@ -412,12 +412,13 @@ export default function App() {
           // Customers cannot view admin, redirect to store
           window.history.replaceState(null, '', '/app/store');
           setActiveTab('ecommerce');
-        } else if (['store', 'cart', 'my-orders', 'settings'].includes(subPath)) {
+        } else if (['store', 'cart', 'my-orders', 'settings', 'ai-assistant'].includes(subPath)) {
           const tabMap = {
             'store': 'ecommerce',
             'cart': 'cart',
             'my-orders': 'my-orders',
-            'settings': 'settings'
+            'settings': 'settings',
+            'ai-assistant': 'ai-assistant'
           };
           setActiveTab(tabMap[subPath]);
         } else {
@@ -447,7 +448,8 @@ export default function App() {
       'cart': 'cart',
       'my-orders': 'my-orders',
       'settings': 'settings',
-      'admin': 'admin'
+      'admin': 'admin',
+      'ai-assistant': 'ai-assistant'
     };
     
     const expectedSubPath = tabMap[activeTab] || 'store';
@@ -475,6 +477,146 @@ export default function App() {
   const [subscriptionsList, setSubscriptionsList] = useState([])
   const [selectedPrices, setSelectedPrices] = useState({}) // product_id -> selected price index
   
+  // AI Assistant States
+  const [aiMessages, setAiMessages] = useState([
+    {
+      id: 1,
+      sender: 'assistant',
+      text: "Hello! I am your **Sharadha Stores AI Assistant**. I can help you query live inventory stock, check upcoming batch expiries, recommend serving recipes, or answer customer FAQs. What can I do for you today? ✨",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+  ])
+  const [aiInput, setAiInput] = useState('')
+  const [isAiTyping, setIsAiTyping] = useState(false)
+
+  const handleSendAIMessage = (e, customText = null) => {
+    if (e) e.preventDefault();
+    const text = (customText || aiInput).trim();
+    if (!text) return;
+
+    // Add user message
+    const userMsg = {
+      id: Date.now(),
+      sender: 'user',
+      text: text,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setAiMessages(prev => [...prev, userMsg]);
+    setAiInput('');
+    setIsAiTyping(true);
+
+    setTimeout(() => {
+      let reply = "";
+      const lower = text.toLowerCase();
+
+      if (lower.includes('low stock') || lower.includes('out of stock') || lower.includes('threshold') || lower.includes('safety limit')) {
+        // Find products below safety threshold (5 units)
+        const lowStock = products.filter(p => {
+          const matchingBatches = batches.filter(b => b.product_id === p.product_id && (b.status === 'Active' || b.status === 'Near Expiry'));
+          const totalStock = matchingBatches.reduce((sum, b) => sum + b.current_stock, 0);
+          return totalStock < 5;
+        });
+        
+        if (lowStock.length === 0) {
+          reply = "✅ **Inventory Status**: All products currently have safe stock levels (5+ units across active batches).";
+        } else {
+          reply = "⚠️ **Low Stock Alert**: The following products have fallen below their safety threshold of 5 units:\n\n" + 
+            lowStock.map(p => {
+              const matchingBatches = batches.filter(b => b.product_id === p.product_id && (b.status === 'Active' || b.status === 'Near Expiry'));
+              const totalStock = matchingBatches.reduce((sum, b) => sum + b.current_stock, 0);
+              return `• **${p.name}**: ${totalStock} units remaining (Safety limit: 5).`;
+            }).join('\n') + 
+            "\n\n_Recommendation: Please schedule new production batches or order raw ingredients to replenish these items._";
+        }
+      } 
+      else if (lower.includes('expiry') || lower.includes('expire') || lower.includes('spoilage') || lower.includes('wasted')) {
+        // Find batches that are Expired or Near Expiry
+        const nearExpiry = batches.filter(b => b.status === 'Near Expiry' && b.current_stock > 0);
+        const expired = batches.filter(b => b.status === 'Expired' && b.current_stock > 0);
+
+        let nearStr = nearExpiry.length > 0 
+          ? nearExpiry.map(b => `• **${b.batch_code}** (${b.product_name}): Expires on ${b.expiry_date} (${b.current_stock} units left)`).join('\n')
+          : "• None";
+
+        let expStr = expired.length > 0 
+          ? expired.map(b => `• **${b.batch_code}** (${b.product_name}): Expired on ${b.expiry_date} (${b.current_stock} units left)`).join('\n')
+          : "• None";
+
+        reply = `📅 **Batch Expiry & Spoilage Report**:\n\n` +
+          `🔴 **Expired Batches (Needs Discard)**:\n${expStr}\n\n` +
+          `⚠️ **Near Expiry Batches (Sell soon)**:\n${nearStr}\n\n` +
+          `_Recommendation: Expired batches should be immediately discarded in the panel. Consider offering Combo Discounts or Flash Promotions on Near Expiry items._`;
+      } 
+      else if (lower.includes('recipe') || lower.includes('pair') || lower.includes('cook') || lower.includes('eat') || lower.includes('serve')) {
+        // Check if user mentions a specific product name
+        const matchedProduct = products.find(p => lower.includes(p.name.toLowerCase()));
+        if (matchedProduct) {
+          const recipeInfo = {
+            'Avakaya Mango Pickle': "🌶️ **Avakaya Mango Pickle serving suggestions**:\n- Pair it with steaming hot white rice, a generous dollop of pure ghee, and a side of roasted papad.\n- Serve it as a spicy condiment alongside curd rice (this is the absolute best combination!).\n- Mix it into potato salad for a tangy, Indian-inspired twist.",
+            'Garlic Pickle': "🧄 **Garlic Pickle serving suggestions**:\n- Serve with warm parathas, puris, or rotis.\n- Elevate simple dal-chawal (lentils and rice) with a spoonful of this rich, pungent pickle.\n- Spread a tiny amount inside a cheese sandwich before grilling for a savory garlic kick.",
+            'Ghee Mysore Pak': "🍬 **Ghee Mysore Pak dessert guide**:\n- Serve at room temperature at the end of festive meals.\n- Pair with a cup of hot South Indian filter coffee to balance the rich sweetness.\n- Slightly warm it up (3-5 seconds in a microwave) to make it melt-in-your-mouth soft.",
+            'Rava Laddu': "🧁 **Rava Laddu serving suggestions**:\n- Serve as an afternoon tea-time snack with chai.\n- Present as a quick dessert during family gatherings and celebrations.\n- Best enjoyed within 10 days of production for optimal texture.",
+            'Instant Idli Mix': "🥞 **Instant Idli Mix cooking guide**:\n1. Mix 1 cup of Idli Mix with 1 cup of sour curd/yogurt and 1/2 cup of water.\n2. Let the batter rest for 10-15 minutes.\n3. Pour into idli moulds and steam for 10-12 minutes on medium heat.\n4. Serve hot with coconut chutney and sambar!"
+          };
+          reply = recipeInfo[matchedProduct.name] || `🍽️ **${matchedProduct.name} Serving suggestion**:\nEnjoy this homemade delicacy as a side dish or snack. For sweet items, serve as desserts at celebrations. For pickles, pair with rice, rotis, or breakfast items like idli/dosa!`;
+        } else {
+          reply = "🍛 **Culinary & Serving Suggestions**:\nTo get custom suggestions, please specify the product name in your question! For example:\n- _'Suggest a recipe using Avakaya Mango Pickle'_\n- _'How to cook Instant Idli Mix?'_";
+        }
+      }
+      else if (lower.includes('price') || lower.includes('cost') || lower.includes('rate') || lower.includes('rs.')) {
+        const matchedProduct = products.find(p => lower.includes(p.name.toLowerCase()));
+        if (matchedProduct) {
+          const pricesStr = matchedProduct.prices && matchedProduct.prices.length > 0
+            ? matchedProduct.prices.map(pr => `• **${pr.pack_size}**: Rs. ${pr.price}`).join('\n')
+            : "No pricing information available.";
+          reply = `💰 **Pricing details for ${matchedProduct.name}**:\n\n${pricesStr}`;
+        } else {
+          reply = "💵 **Product Price List**:\nHere is a quick summary of our premium products:\n" + 
+            products.map(p => `• **${p.name}** starting from Rs. ${p.prices && p.prices.length > 0 ? p.prices[0].price : 'N/A'}`).join('\n');
+        }
+      }
+      else if (lower.includes('hello') || lower.includes('hi ') || lower.includes('hey') || lower.includes('how are you')) {
+        reply = "Hello! 👋 I am here and ready to help. You can ask me about stock status, product shelf life, expiry warnings, or cooking guides. What's on your mind?";
+      }
+      else {
+        // Check if user named a product, provide generic info
+        const matchedProduct = products.find(p => lower.includes(p.name.toLowerCase()));
+        if (matchedProduct) {
+          reply = `ℹ️ **Details on ${matchedProduct.name}**:\n\n` +
+            `• **Category**: ${matchedProduct.category_name || 'Homemade Food'}\n` +
+            `• **Description**: ${matchedProduct.description || 'Premium homemade quality.'}\n` +
+            `• **Stock level**: ${batches.filter(b => b.product_id === matchedProduct.product_id && (b.status === 'Active' || b.status === 'Near Expiry')).reduce((sum, b) => sum + b.current_stock, 0)} units available.\n\n` +
+            `Would you like to see pricing or recipes for this item? Just ask!`;
+        } else {
+          reply = "🤖 **Sharadha Stores Copilot**:\nI couldn't quite match that query to a specific command. You can ask me about:\n\n" +
+            "1. **Inventory & Stock**: _'Which products are low in stock?'_\n" +
+            "2. **Expiries**: _'Show expiring batches'_\n" +
+            "3. **Pricing**: _'Price of Garlic Pickle'_\n" +
+            "4. **Recipes**: _'Suggest a recipe using Avakaya Mango Pickle'_\n\n" +
+            "Or tell me a product name and I'll lookup its status!";
+        }
+      }
+
+      setAiMessages(prev => [...prev, {
+        id: Date.now(),
+        sender: 'assistant',
+        text: reply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+      setIsAiTyping(false);
+    }, 1200); // 1.2s typing simulation delay
+  };
+
+  // Auto-scroll AI chat to bottom when messages update or assistant starts typing
+  useEffect(() => {
+    if (activeTab === 'ai-assistant') {
+      const container = document.getElementById('ai-chat-thread');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  }, [aiMessages, isAiTyping, activeTab]);
+
   // New Product Modal States
   const [isCreateProductModalOpen, setIsCreateProductModalOpen] = useState(false)
   const [newProductName, setNewProductName] = useState('')
@@ -2292,6 +2434,30 @@ export default function App() {
                 <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
               </div>
 
+              {/* AI Assistant Indicator in Header */}
+              <div 
+                className="ai-indicator animate-pulse-glow" 
+                onClick={() => setActiveTab('ai-assistant')} 
+                title="AI Assistant"
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  border: activeTab === 'ai-assistant' ? '1px solid var(--accent-primary)' : '1px solid transparent',
+                  background: activeTab === 'ai-assistant' ? 'rgba(255, 159, 28, 0.1)' : 'transparent',
+                  color: activeTab === 'ai-assistant' ? 'var(--accent-primary)' : 'var(--text-main)',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  position: 'relative',
+                  padding: 0,
+                  transition: 'var(--transition-smooth)'
+                }}
+              >
+                <svg style={{ width: '15px', height: '15px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              </div>
+
               <button 
                 className="btn btn-secondary btn-sm" 
                 onClick={handleOpenSettings}
@@ -2317,6 +2483,29 @@ export default function App() {
 
           {currentUser && currentUser.role === 'admin' && (
             <>
+              {/* AI Assistant Button for Admin */}
+              <button 
+                className="btn btn-secondary btn-sm" 
+                onClick={() => setActiveTab('ai-assistant')}
+                title="AI Assistant"
+                style={{ 
+                  border: '1px solid var(--accent-primary)', 
+                  color: 'var(--accent-primary)', 
+                  background: activeTab === 'ai-assistant' ? 'rgba(255, 159, 28, 0.1)' : 'rgba(255, 159, 28, 0.05)',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  transition: 'var(--transition-smooth)',
+                  marginRight: '0.25rem'
+                }}
+              >
+                <svg style={{ width: '15px', height: '15px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              </button>
+
               {/* Theme Toggle Button for Admin */}
               <button 
                 className="btn btn-secondary btn-sm" 
@@ -3158,6 +3347,317 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== AI ASSISTANT (COPILOT) ZONE ==================== */}
+        {activeTab === 'ai-assistant' && (
+          <div className="animate-fade-in" style={{ maxWidth: '900px', margin: '0 auto 3rem auto', padding: '0 1rem' }}>
+            {/* Header / Intro */}
+            <div style={{ textAlign: 'center', marginBottom: '2rem' }} className="animate-slide-up">
+              <span style={{
+                background: 'rgba(255, 159, 28, 0.1)',
+                color: 'var(--accent-primary)',
+                padding: '6px 16px',
+                borderRadius: '20px',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                border: '1px solid rgba(255, 159, 28, 0.2)',
+                display: 'inline-block',
+                marginBottom: '1rem'
+              }}>
+                Interactive Assistant
+              </span>
+              <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', fontWeight: 800 }}>Sharadha Stores Copilot</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '1.05rem', maxWidth: '600px', margin: '0 auto' }}>
+                Ask me anything about low stock items, expiring batches, recipes, prices, or store directories.
+              </p>
+            </div>
+
+            {/* Chat Glass Card */}
+            <div className="glass-card animate-slide-up" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '600px',
+              border: '1px solid var(--border-color)',
+              boxShadow: 'var(--shadow-premium)',
+              borderRadius: '24px',
+              overflow: 'hidden',
+              background: 'rgba(15, 23, 42, 0.45)'
+            }}>
+              {/* Chat Titlebar */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                background: 'rgba(30, 41, 59, 0.3)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, var(--accent-primary) 0%, #ff5a5f 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      fontWeight: 'bold',
+                      fontSize: '1.1rem'
+                    }}>
+                      🤖
+                    </div>
+                    <span style={{
+                      position: 'absolute',
+                      bottom: '0',
+                      right: '0',
+                      width: '12px',
+                      height: '12px',
+                      borderRadius: '50%',
+                      background: 'var(--accent-secondary)',
+                      border: '2px solid var(--bg-primary)'
+                    }}></span>
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#fff' }}>Store Assistant</h4>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--accent-secondary)', fontWeight: 600 }}>Active Online Context</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm("Clear chat history?")) {
+                        setAiMessages([
+                          {
+                            id: 1,
+                            sender: 'assistant',
+                            text: "Hello! I am your **Sharadha Stores AI Assistant**. I can help you query live inventory stock, check upcoming batch expiries, recommend serving recipes, or answer customer FAQs. What can I do for you today? ✨",
+                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          }
+                        ]);
+                      }
+                    }}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-muted)',
+                      borderRadius: '10px',
+                      padding: '6px 12px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem'
+                    }}
+                    title="Clear Conversation"
+                  >
+                    Clear Chat
+                  </button>
+                </div>
+              </div>
+
+              {/* Messages Container */}
+              <div 
+                id="ai-chat-thread"
+                style={{
+                  flex: 1,
+                  padding: '1.5rem',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                  scrollBehavior: 'smooth'
+                }}
+              >
+                {aiMessages.map((msg) => {
+                  const isUser = msg.sender === 'user';
+                  return (
+                    <div 
+                      key={msg.id} 
+                      style={{
+                        display: 'flex',
+                        justifyContent: isUser ? 'flex-end' : 'flex-start',
+                        width: '100%',
+                        animation: 'fadeIn 0.3s ease-in-out'
+                      }}
+                    >
+                      <div style={{
+                        maxWidth: '80%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: isUser ? 'flex-end' : 'flex-start'
+                      }}>
+                        {/* Message Bubble */}
+                        <div style={{
+                          padding: '1rem 1.25rem',
+                          borderRadius: isUser ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+                          background: isUser ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.05)',
+                          color: isUser ? '#000000' : 'var(--text-main)',
+                          border: isUser ? 'none' : '1px solid var(--border-color)',
+                          boxShadow: isUser ? '0 4px 15px rgba(255, 159, 28, 0.25)' : 'none',
+                          fontSize: '0.95rem',
+                          lineHeight: '1.5',
+                          whiteSpace: 'pre-line'
+                        }}>
+                          {/* Rich formatting parser */}
+                          {msg.text.split('\n').map((line, lIdx) => {
+                            const parts = line.split('**');
+                            return (
+                              <div key={lIdx} style={{ minHeight: '1.2em' }}>
+                                {parts.map((part, pIdx) => {
+                                  if (pIdx % 2 === 1) {
+                                    return <strong key={pIdx} style={{ color: isUser ? '#000' : '#fff', fontWeight: 700 }}>{part}</strong>;
+                                  }
+                                  const subParts = part.split('_');
+                                  return subParts.map((subPart, sIdx) => {
+                                    if (sIdx % 2 === 1) {
+                                      return <em key={sIdx} style={{ opacity: 0.9 }}>{subPart}</em>;
+                                    }
+                                    return <span key={sIdx}>{subPart}</span>;
+                                  });
+                                })}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Timestamp */}
+                        <span style={{ 
+                          fontSize: '0.75rem', 
+                          color: 'var(--text-muted)', 
+                          marginTop: '4px',
+                          padding: '0 4px'
+                        }}>
+                          {msg.timestamp}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Typing Indicator */}
+                {isAiTyping && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="dot-typing-container">
+                        <span className="dot-typing"></span>
+                        <span className="dot-typing"></span>
+                        <span className="dot-typing"></span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingLeft: '8px' }}>
+                        Assistant is typing...
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Suggestion Chips */}
+              <div style={{
+                padding: '0.75rem 1.5rem',
+                borderTop: '1px solid var(--border-color)',
+                background: 'rgba(15, 23, 42, 0.2)',
+                display: 'flex',
+                gap: '0.6rem',
+                overflowX: 'auto',
+                whiteSpace: 'nowrap',
+                scrollbarWidth: 'none'
+              }} className="no-scrollbar">
+                {[
+                  { text: "⚠️ Low Stock", query: "Which products are currently low in stock?" },
+                  { text: "📅 Expiring Batches", query: "Check if any food batches are expiring soon" },
+                  { text: "🌶️ Pickle Serving Ideas", query: "Suggest a recipe using Avakaya Mango Pickle" },
+                  { text: "🍬 Mysore Pak Guide", query: "How to eat Ghee Mysore Pak?" },
+                  { text: "🥞 Instant Idli Mix", query: "How to cook Instant Idli Mix?" }
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => handleSendAIMessage(e, chip.query)}
+                    style={{
+                      background: 'rgba(255, 159, 28, 0.05)',
+                      border: '1px solid rgba(255, 159, 28, 0.15)',
+                      color: 'var(--accent-primary)',
+                      borderRadius: '30px',
+                      padding: '6px 14px',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'var(--transition-smooth)',
+                      flexShrink: 0
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = 'rgba(255, 159, 28, 0.12)';
+                      e.target.style.borderColor = 'rgba(255, 159, 28, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'rgba(255, 159, 28, 0.05)';
+                      e.target.style.borderColor = 'rgba(255, 159, 28, 0.15)';
+                    }}
+                  >
+                    {chip.text}
+                  </button>
+                ))}
+              </div>
+
+              {/* Input Form */}
+              <form 
+                onSubmit={handleSendAIMessage}
+                style={{
+                  display: 'flex',
+                  gap: '0.75rem',
+                  padding: '1.25rem 1.5rem',
+                  borderTop: '1px solid var(--border-color)',
+                  background: 'rgba(30, 41, 59, 0.3)'
+                }}
+              >
+                <input
+                  type="text"
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                  placeholder="Ask about inventory, expiries, or recipes..."
+                  disabled={isAiTyping}
+                  style={{
+                    flex: 1,
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '12px',
+                    padding: '0.85rem 1.25rem',
+                    color: 'var(--text-main)',
+                    fontSize: '0.95rem',
+                    outline: 'none',
+                    transition: 'var(--transition-smooth)',
+                    boxShadow: 'var(--shadow-inset)'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--accent-primary)'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
+                />
+                <button
+                  type="submit"
+                  disabled={isAiTyping || !aiInput.trim()}
+                  className="btn btn-primary"
+                  style={{
+                    borderRadius: '12px',
+                    padding: '0.85rem 1.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontWeight: 700,
+                    cursor: (isAiTyping || !aiInput.trim()) ? 'not-allowed' : 'pointer',
+                    opacity: (isAiTyping || !aiInput.trim()) ? 0.6 : 1,
+                    transition: 'var(--transition-smooth)'
+                  }}
+                >
+                  Send
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px' }}>
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
+              </form>
             </div>
           </div>
         )}
