@@ -464,6 +464,7 @@ export default function App() {
   const [hoveredMonthlyBar, setHoveredMonthlyBar] = useState(null) // { x, y, month, revenue, orders }
   const [toast, setToast] = useState(null)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const [isChatOpen, setIsChatOpen] = useState(false)
   
   // Data States
   const [products, setProducts] = useState([])
@@ -736,16 +737,21 @@ export default function App() {
     }, 1200);
   };
 
-  // Auto-scroll AI chat to bottom when messages update or assistant starts typing
+    // Auto-scroll AI chat to bottom when messages update or assistant starts typing
   useEffect(() => {
-    if (activeTab === 'ai-assistant') {
-      const containerId = currentUser?.role === 'admin' ? 'ai-chat-thread-admin' : 'ai-chat-thread-client';
-      const container = document.getElementById(containerId);
+    const threadIds = [
+      'ai-chat-thread-admin',
+      'ai-chat-thread-client',
+      'ai-chat-thread-widget-admin',
+      'ai-chat-thread-widget-client'
+    ];
+    threadIds.forEach(id => {
+      const container = document.getElementById(id);
       if (container) {
         container.scrollTop = container.scrollHeight;
       }
-    }
-  }, [aiMessagesAdmin, aiMessagesClient, isAiTypingAdmin, isAiTypingClient, activeTab, currentUser]);
+    });
+  }, [aiMessagesAdmin, aiMessagesClient, isAiTypingAdmin, isAiTypingClient, activeTab, currentUser, isChatOpen]);
 
   // New Product Modal States
   const [isCreateProductModalOpen, setIsCreateProductModalOpen] = useState(false)
@@ -786,6 +792,7 @@ export default function App() {
   const [editIngredientUnit, setEditIngredientUnit] = useState('kg')
   const [editIngredientIsReferenced, setEditIngredientIsReferenced] = useState(false)
   const [batchesSearchQuery, setBatchesSearchQuery] = useState('') // For searching admin batches table
+  const [orderSearchQuery, setOrderSearchQuery] = useState('')
   
   // Shopping Cart States
   const [cart, setCart] = useState([])
@@ -1969,6 +1976,27 @@ export default function App() {
     }
   }
 
+  // Delete specific customer order
+  const handleDeleteOrder = async (orderId) => {
+    if (!window.confirm(`Are you sure you want to delete order #${orderId}? This action cannot be undone.`)) {
+      return
+    }
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      if (res.ok) {
+        showToast(data.message || `Order #${orderId} deleted successfully.`, 'success')
+        fetchData()
+      } else {
+        showToast(data.error || 'Failed to delete order.', 'danger')
+      }
+    } catch (err) {
+      showToast('Failed to delete order.', 'danger')
+    }
+  }
+
   // ---------------- REPORT EXPORT & PRINT LOGIC ----------------
 
   // Export current inventory spreadsheet CSV
@@ -2029,11 +2057,23 @@ export default function App() {
   // Get distinct categories
   const categoriesList = ['All', ...categories.map(c => c.name)]
 
-  // Create June 2026 Monthly Calendar cells
-  // June 1, 2026 starts on Monday. 30 Days.
+  const getLocalDateString = (d) => {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // Create dynamic Monthly Calendar cells based on today's date
   const buildCalendarCells = () => {
-    const daysInJune = 30
-    const startDayIndex = 1 // Monday (0=Sun, 1=Mon, 2=Tue...)
+    const today = new Date()
+    const currentYear = today.getFullYear()
+    const currentMonth = today.getMonth() // 0-indexed
+    
+    const firstDay = new Date(currentYear, currentMonth, 1)
+    const startDayIndex = firstDay.getDay() // 0=Sun, 1=Mon...
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+    
     const cells = []
     
     // Insert empty padding cells for days before the 1st
@@ -2041,9 +2081,11 @@ export default function App() {
       cells.push({ date: null, currentMonth: false })
     }
     
-    // Insert June days
-    for (let d = 1; d <= daysInJune; d++) {
-      const dateStr = `2026-06-${d.toString().padStart(2, '0')}`
+    // Insert days of the month
+    for (let d = 1; d <= daysInMonth; d++) {
+      const yearStr = currentYear
+      const monthStr = String(currentMonth + 1).padStart(2, '0')
+      const dateStr = `${yearStr}-${monthStr}-${d.toString().padStart(2, '0')}`
       // Filter batches that expire on this specific day
       const expiringBatches = batches.filter(
         (b) => b.expiry_date === dateStr && b.current_stock > 0
@@ -2567,16 +2609,16 @@ export default function App() {
               {/* AI Assistant Indicator in Header */}
               <div 
                 className="ai-indicator animate-pulse-glow" 
-                onClick={() => setActiveTab('ai-assistant')} 
+                onClick={() => setIsChatOpen(!isChatOpen)} 
                 title="AI Assistant"
                 style={{ 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
                   cursor: 'pointer',
-                  border: activeTab === 'ai-assistant' ? '1px solid var(--accent-primary)' : '1px solid transparent',
-                  background: activeTab === 'ai-assistant' ? 'rgba(255, 159, 28, 0.1)' : 'transparent',
-                  color: activeTab === 'ai-assistant' ? 'var(--accent-primary)' : 'var(--text-main)',
+                  border: isChatOpen ? '1px solid var(--accent-primary)' : '1px solid transparent',
+                  background: isChatOpen ? 'rgba(255, 159, 28, 0.1)' : 'transparent',
+                  color: isChatOpen ? 'var(--accent-primary)' : 'var(--text-main)',
                   width: '32px',
                   height: '32px',
                   borderRadius: '50%',
@@ -2616,12 +2658,12 @@ export default function App() {
               {/* AI Assistant Button for Admin */}
               <button 
                 className="btn btn-secondary btn-sm" 
-                onClick={() => setActiveTab('ai-assistant')}
+                onClick={() => setIsChatOpen(!isChatOpen)}
                 title="AI Assistant"
                 style={{ 
                   border: '1px solid var(--accent-primary)', 
                   color: 'var(--accent-primary)', 
-                  background: activeTab === 'ai-assistant' ? 'rgba(255, 159, 28, 0.1)' : 'rgba(255, 159, 28, 0.05)',
+                  background: isChatOpen ? 'rgba(255, 159, 28, 0.1)' : 'rgba(255, 159, 28, 0.05)',
                   width: '32px',
                   height: '32px',
                   borderRadius: '50%',
@@ -3481,626 +3523,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ==================== AI ASSISTANT (COPILOT) ZONE ==================== */}
-        {activeTab === 'ai-assistant' && (
-          <div className="animate-fade-in" style={{ maxWidth: '900px', margin: '0 auto 3rem auto', padding: '0 1rem' }}>
-            {currentUser?.role === 'admin' ? (
-              // ==================== ADMIN COPILOT UI ====================
-              <>
-                {/* Header / Intro */}
-                <div style={{ textAlign: 'center', marginBottom: '2rem' }} className="animate-slide-up">
-                  <span style={{
-                    background: 'rgba(255, 159, 28, 0.1)',
-                    color: 'var(--accent-primary)',
-                    padding: '6px 16px',
-                    borderRadius: '20px',
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    border: '1px solid rgba(255, 159, 28, 0.2)',
-                    display: 'inline-block',
-                    marginBottom: '1rem'
-                  }}>
-                    Operations Control
-                  </span>
-                  <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', fontWeight: 800 }}>Inventory Copilot</h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '1.05rem', maxWidth: '600px', margin: '0 auto' }}>
-                    Ask about low stock levels, batch codes, expiring batches, raw ingredients, or restocking recommendations.
-                  </p>
-                </div>
 
-                {/* Chat Glass Card */}
-                <div className="glass-card animate-slide-up" style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '600px',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: 'var(--shadow-premium)',
-                  borderRadius: '24px',
-                  overflow: 'hidden',
-                  background: 'rgba(15, 23, 42, 0.45)'
-                }}>
-                  {/* Chat Titlebar */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '1.25rem 1.5rem',
-                    borderBottom: '1px solid var(--border-color)',
-                    background: 'rgba(30, 41, 59, 0.3)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{ position: 'relative' }}>
-                        <div style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          background: 'linear-gradient(135deg, var(--accent-primary) 0%, #ff5a5f 100%)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#fff',
-                          fontWeight: 'bold',
-                          fontSize: '1.1rem'
-                        }}>
-                          📋
-                        </div>
-                        <span style={{
-                          position: 'absolute',
-                          bottom: '0',
-                          right: '0',
-                          width: '12px',
-                          height: '12px',
-                          borderRadius: '50%',
-                          background: 'var(--accent-secondary)',
-                          border: '2px solid var(--bg-primary)'
-                        }}></span>
-                      </div>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#fff' }}>Inventory Assistant</h4>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-secondary)', fontWeight: 600 }}>Active Database Link</span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button 
-                        onClick={() => {
-                          if (window.confirm("Clear inventory chat history?")) {
-                            setAiMessagesAdmin([
-                              {
-                                id: 1,
-                                sender: 'assistant',
-                                text: "Hello Admin! I am your **Sharadha Stores Inventory Copilot**. I can help you check stock levels, view expiring batches, review ingredient stocks, or plan restocking. What inventory queries do you have today? 📋",
-                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              }
-                            ]);
-                          }
-                        }}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid var(--border-color)',
-                          color: 'var(--text-muted)',
-                          borderRadius: '10px',
-                          padding: '6px 12px',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Clear Chat
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Messages Container */}
-                  <div 
-                    id="ai-chat-thread-admin"
-                    style={{
-                      flex: 1,
-                      padding: '1.5rem',
-                      overflowY: 'auto',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '1.25rem',
-                      scrollBehavior: 'smooth'
-                    }}
-                  >
-                    {aiMessagesAdmin.map((msg) => {
-                      const isUser = msg.sender === 'user';
-                      return (
-                        <div 
-                          key={msg.id} 
-                          style={{
-                            display: 'flex',
-                            justifyContent: isUser ? 'flex-end' : 'flex-start',
-                            width: '100%',
-                            animation: 'fadeIn 0.3s ease-in-out'
-                          }}
-                        >
-                          <div style={{
-                            maxWidth: '80%',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: isUser ? 'flex-end' : 'flex-start'
-                          }}>
-                            {/* Message Bubble */}
-                            <div style={{
-                              padding: '1rem 1.25rem',
-                              borderRadius: isUser ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                              background: isUser ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.05)',
-                              color: isUser ? '#000000' : 'var(--text-main)',
-                              border: isUser ? 'none' : '1px solid var(--border-color)',
-                              boxShadow: isUser ? '0 4px 15px rgba(255, 159, 28, 0.25)' : 'none',
-                              fontSize: '0.95rem',
-                              lineHeight: '1.5',
-                              whiteSpace: 'pre-line'
-                            }}>
-                              {/* Rich formatting parser */}
-                              {msg.text.split('\n').map((line, lIdx) => {
-                                const parts = line.split('**');
-                                return (
-                                  <div key={lIdx} style={{ minHeight: '1.2em' }}>
-                                    {parts.map((part, pIdx) => {
-                                      if (pIdx % 2 === 1) {
-                                        return <strong key={pIdx} style={{ color: isUser ? '#000' : '#fff', fontWeight: 700 }}>{part}</strong>;
-                                      }
-                                      const subParts = part.split('_');
-                                      return subParts.map((subPart, sIdx) => {
-                                        if (sIdx % 2 === 1) {
-                                          return <em key={sIdx} style={{ opacity: 0.9 }}>{subPart}</em>;
-                                        }
-                                        return <span key={sIdx}>{subPart}</span>;
-                                      });
-                                    })}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            {/* Timestamp */}
-                            <span style={{ 
-                              fontSize: '0.75rem', 
-                              color: 'var(--text-muted)', 
-                              marginTop: '4px',
-                              padding: '0 4px'
-                            }}>
-                              {msg.timestamp}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Typing Indicator */}
-                    {isAiTypingAdmin && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div className="dot-typing-container">
-                            <span className="dot-typing"></span>
-                            <span className="dot-typing"></span>
-                            <span className="dot-typing"></span>
-                          </div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingLeft: '8px' }}>
-                            Copilot is thinking...
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Suggestion Chips */}
-                  <div style={{
-                    padding: '0.75rem 1.5rem',
-                    borderTop: '1px solid var(--border-color)',
-                    background: 'rgba(15, 23, 42, 0.2)',
-                    display: 'flex',
-                    gap: '0.6rem',
-                    overflowX: 'auto',
-                    whiteSpace: 'nowrap',
-                    scrollbarWidth: 'none'
-                  }} className="no-scrollbar">
-                    {[
-                      { text: "⚠️ Low Product Stock", query: "Which products are currently low in stock?" },
-                      { text: "📅 Expiring Batches", query: "Check if any food batches are expiring soon" },
-                      { text: "🥣 Ingredient Check", query: "Check raw ingredient stock levels" },
-                      { text: "➕ Suggest Restock Plan", query: "Suggest restocking quantities" }
-                    ].map((chip, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={(e) => handleSendAdminAIMessage(e, chip.query)}
-                        style={{
-                          background: 'rgba(255, 159, 28, 0.05)',
-                          border: '1px solid rgba(255, 159, 28, 0.15)',
-                          color: 'var(--accent-primary)',
-                          borderRadius: '30px',
-                          padding: '6px 14px',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          transition: 'var(--transition-smooth)',
-                          flexShrink: 0
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 159, 28, 0.12)';
-                          e.target.style.borderColor = 'rgba(255, 159, 28, 0.3)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 159, 28, 0.05)';
-                          e.target.style.borderColor = 'rgba(255, 159, 28, 0.15)';
-                        }}
-                      >
-                        {chip.text}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Input Form */}
-                  <form 
-                    onSubmit={handleSendAdminAIMessage}
-                    style={{
-                      display: 'flex',
-                      gap: '0.75rem',
-                      padding: '1.25rem 1.5rem',
-                      borderTop: '1px solid var(--border-color)',
-                      background: 'rgba(30, 41, 59, 0.3)'
-                    }}
-                  >
-                    <input
-                      type="text"
-                      value={aiInputAdmin}
-                      onChange={(e) => setAiInputAdmin(e.target.value)}
-                      placeholder="Ask about batch inventory, codes, ingredients, expiries..."
-                      disabled={isAiTypingAdmin}
-                      style={{
-                        flex: 1,
-                        background: 'rgba(15, 23, 42, 0.65)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '12px',
-                        padding: '0.85rem 1.25rem',
-                        color: 'var(--text-main)',
-                        fontSize: '0.95rem',
-                        outline: 'none',
-                        transition: 'var(--transition-smooth)',
-                        boxShadow: 'var(--shadow-inset)'
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = 'var(--accent-primary)'}
-                      onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
-                    />
-                    <button
-                      type="submit"
-                      disabled={isAiTypingAdmin || !aiInputAdmin.trim()}
-                      className="btn btn-primary"
-                      style={{
-                        borderRadius: '12px',
-                        padding: '0.85rem 1.75rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        fontWeight: 700,
-                        cursor: (isAiTypingAdmin || !aiInputAdmin.trim()) ? 'not-allowed' : 'pointer',
-                        opacity: (isAiTypingAdmin || !aiInputAdmin.trim()) ? 0.6 : 1,
-                        transition: 'var(--transition-smooth)'
-                      }}
-                    >
-                      Send
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px' }}>
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                      </svg>
-                    </button>
-                  </form>
-                </div>
-              </>
-            ) : (
-              // ==================== CLIENT SHOPPING ASSISTANT UI ====================
-              <>
-                {/* Header / Intro */}
-                <div style={{ textAlign: 'center', marginBottom: '2rem' }} className="animate-slide-up">
-                  <span style={{
-                    background: 'rgba(255, 159, 28, 0.1)',
-                    color: 'var(--accent-primary)',
-                    padding: '6px 16px',
-                    borderRadius: '20px',
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    border: '1px solid rgba(255, 159, 28, 0.2)',
-                    display: 'inline-block',
-                    marginBottom: '1rem'
-                  }}>
-                    Shopping Assistant
-                  </span>
-                  <h2 style={{ fontSize: '2.5rem', marginBottom: '0.5rem', fontWeight: 800 }}>Sharadha Stores Copilot</h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '1.05rem', maxWidth: '600px', margin: '0 auto' }}>
-                    Ask about homemade pickles, sweets, instant mixes, product prices, recipes, or track your orders.
-                  </p>
-                </div>
-
-                {/* Chat Glass Card */}
-                <div className="glass-card animate-slide-up" style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '600px',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: 'var(--shadow-premium)',
-                  borderRadius: '24px',
-                  overflow: 'hidden',
-                  background: 'rgba(15, 23, 42, 0.45)'
-                }}>
-                  {/* Chat Titlebar */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '1.25rem 1.5rem',
-                    borderBottom: '1px solid var(--border-color)',
-                    background: 'rgba(30, 41, 59, 0.3)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{ position: 'relative' }}>
-                        <div style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          background: 'linear-gradient(135deg, var(--accent-primary) 0%, #ff5a5f 100%)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#fff',
-                          fontWeight: 'bold',
-                          fontSize: '1.1rem'
-                        }}>
-                          🤖
-                        </div>
-                        <span style={{
-                          position: 'absolute',
-                          bottom: '0',
-                          right: '0',
-                          width: '12px',
-                          height: '12px',
-                          borderRadius: '50%',
-                          background: 'var(--accent-secondary)',
-                          border: '2px solid var(--bg-primary)'
-                        }}></span>
-                      </div>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '1.1rem', color: '#fff' }}>Store Assistant</h4>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-secondary)', fontWeight: 600 }}>Active Online</span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button 
-                        onClick={() => {
-                          if (window.confirm("Clear shopping chat history?")) {
-                            setAiMessagesClient([
-                              {
-                                id: 1,
-                                sender: 'assistant',
-                                text: "Hello! I am your **Sharadha Stores Shopping Assistant**. I can help you check product prices, suggest serving recipes, browse categories, or track your order status. What are you looking to buy today? 🛍️",
-                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              }
-                            ]);
-                          }
-                        }}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid var(--border-color)',
-                          color: 'var(--text-muted)',
-                          borderRadius: '10px',
-                          padding: '6px 12px',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Clear Chat
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Messages Container */}
-                  <div 
-                    id="ai-chat-thread-client"
-                    style={{
-                      flex: 1,
-                      padding: '1.5rem',
-                      overflowY: 'auto',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '1.25rem',
-                      scrollBehavior: 'smooth'
-                    }}
-                  >
-                    {aiMessagesClient.map((msg) => {
-                      const isUser = msg.sender === 'user';
-                      return (
-                        <div 
-                          key={msg.id} 
-                          style={{
-                            display: 'flex',
-                            justifyContent: isUser ? 'flex-end' : 'flex-start',
-                            width: '100%',
-                            animation: 'fadeIn 0.3s ease-in-out'
-                          }}
-                        >
-                          <div style={{
-                            maxWidth: '80%',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: isUser ? 'flex-end' : 'flex-start'
-                          }}>
-                            {/* Message Bubble */}
-                            <div style={{
-                              padding: '1rem 1.25rem',
-                              borderRadius: isUser ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                              background: isUser ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.05)',
-                              color: isUser ? '#000000' : 'var(--text-main)',
-                              border: isUser ? 'none' : '1px solid var(--border-color)',
-                              boxShadow: isUser ? '0 4px 15px rgba(255, 159, 28, 0.25)' : 'none',
-                              fontSize: '0.95rem',
-                              lineHeight: '1.5',
-                              whiteSpace: 'pre-line'
-                            }}>
-                              {/* Rich formatting parser */}
-                              {msg.text.split('\n').map((line, lIdx) => {
-                                const parts = line.split('**');
-                                return (
-                                  <div key={lIdx} style={{ minHeight: '1.2em' }}>
-                                    {parts.map((part, pIdx) => {
-                                      if (pIdx % 2 === 1) {
-                                        return <strong key={pIdx} style={{ color: isUser ? '#000' : '#fff', fontWeight: 700 }}>{part}</strong>;
-                                      }
-                                      const subParts = part.split('_');
-                                      return subParts.map((subPart, sIdx) => {
-                                        if (sIdx % 2 === 1) {
-                                          return <em key={sIdx} style={{ opacity: 0.9 }}>{subPart}</em>;
-                                        }
-                                        return <span key={sIdx}>{subPart}</span>;
-                                      });
-                                    })}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            {/* Timestamp */}
-                            <span style={{ 
-                              fontSize: '0.75rem', 
-                              color: 'var(--text-muted)', 
-                              marginTop: '4px',
-                              padding: '0 4px'
-                            }}>
-                              {msg.timestamp}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Typing Indicator */}
-                    {isAiTypingClient && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div className="dot-typing-container">
-                            <span className="dot-typing"></span>
-                            <span className="dot-typing"></span>
-                            <span className="dot-typing"></span>
-                          </div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', paddingLeft: '8px' }}>
-                            Assistant is typing...
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Suggestion Chips */}
-                  <div style={{
-                    padding: '0.75rem 1.5rem',
-                    borderTop: '1px solid var(--border-color)',
-                    background: 'rgba(15, 23, 42, 0.2)',
-                    display: 'flex',
-                    gap: '0.6rem',
-                    overflowX: 'auto',
-                    whiteSpace: 'nowrap',
-                    scrollbarWidth: 'none'
-                  }} className="no-scrollbar">
-                    {[
-                      { text: "🌶️ Serving Ideas", query: "Suggest a recipe using Avakaya Mango Pickle" },
-                      { text: "🍬 Sweets Price List", query: "Show me product prices" },
-                      { text: "📦 Track My Orders", query: "Track my orders" },
-                      { text: "🥞 Instant Mixes", query: "How to cook Instant Idli Mix?" }
-                    ].map((chip, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={(e) => handleSendClientAIMessage(e, chip.query)}
-                        style={{
-                          background: 'rgba(255, 159, 28, 0.05)',
-                          border: '1px solid rgba(255, 159, 28, 0.15)',
-                          color: 'var(--accent-primary)',
-                          borderRadius: '30px',
-                          padding: '6px 14px',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          transition: 'var(--transition-smooth)',
-                          flexShrink: 0
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 159, 28, 0.12)';
-                          e.target.style.borderColor = 'rgba(255, 159, 28, 0.3)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 159, 28, 0.05)';
-                          e.target.style.borderColor = 'rgba(255, 159, 28, 0.15)';
-                        }}
-                      >
-                        {chip.text}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Input Form */}
-                  <form 
-                    onSubmit={handleSendClientAIMessage}
-                    style={{
-                      display: 'flex',
-                      gap: '0.75rem',
-                      padding: '1.25rem 1.5rem',
-                      borderTop: '1px solid var(--border-color)',
-                      background: 'rgba(30, 41, 59, 0.3)'
-                    }}
-                  >
-                    <input
-                      type="text"
-                      value={aiInputClient}
-                      onChange={(e) => setAiInputClient(e.target.value)}
-                      placeholder="Ask about pickles, sweets, recipes, pricing, orders..."
-                      disabled={isAiTypingClient}
-                      style={{
-                        flex: 1,
-                        background: 'rgba(15, 23, 42, 0.65)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '12px',
-                        padding: '0.85rem 1.25rem',
-                        color: 'var(--text-main)',
-                        fontSize: '0.95rem',
-                        outline: 'none',
-                        transition: 'var(--transition-smooth)',
-                        boxShadow: 'var(--shadow-inset)'
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = 'var(--accent-primary)'}
-                      onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
-                    />
-                    <button
-                      type="submit"
-                      disabled={isAiTypingClient || !aiInputClient.trim()}
-                      className="btn btn-primary"
-                      style={{
-                        borderRadius: '12px',
-                        padding: '0.85rem 1.75rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        fontWeight: 700,
-                        cursor: (isAiTypingClient || !aiInputClient.trim()) ? 'not-allowed' : 'pointer',
-                        opacity: (isAiTypingClient || !aiInputClient.trim()) ? 0.6 : 1,
-                        transition: 'var(--transition-smooth)'
-                      }}
-                    >
-                      Send
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px' }}>
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                      </svg>
-                    </button>
-                  </form>
-                </div>
-              </>
-            )}
-          </div>
-        )}
 
         {/* ==================== A. CUSTOMER E-COMMERCE ZONE ==================== */}
         {activeTab === 'ecommerce' && (
@@ -4910,7 +4333,9 @@ export default function App() {
                                       <div className="glass-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h2>Expiry Calendar</h2>
-                    <span className="badge badge-info">June 2026</span>
+                    <span className="badge badge-info">
+                      {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </span>
                   </div>
                   
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
@@ -4929,7 +4354,7 @@ export default function App() {
                         <div
                           key={idx}
                           className={`calendar-cell ${cell.currentMonth ? 'current-month' : ''} ${
-                            cell.dateStr === '2026-06-11' ? 'today' : ''
+                            cell.dateStr === getLocalDateString(new Date()) ? 'today' : ''
                           }`}
                         >
                           <div className="calendar-date-number">{cell.date || ''}</div>
@@ -4959,86 +4384,159 @@ export default function App() {
               )}
 
               {adminSubTab === 'orders' && (
-                            <div className="glass-card animate-slide-up" style={{ marginTop: '2rem' }} id="customer-orders-section">
-              <h2 style={{ marginBottom: '1rem' }}>Customer Orders</h2>
-              <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                {orders.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No orders placed yet.</p>
-                ) : (
-                  <table className="premium-table">
-                    <thead>
-                      <tr>
-                        <th>Order No</th>
-                        <th>Customer</th>
-                        <th>Address</th>
-                        <th>Items</th>
-                        <th>Quantity</th>
-                        <th>Total</th>
-                        <th>Method</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...orders]
-                        .sort((a, b) => b.order_id - a.order_id)
-                        .map((ord) => (
-                          <tr key={ord.order_id}>
-                            <td><strong>#{ord.order_id}</strong></td>
-                            <td>
-                              <div><strong>{ord.customer_name}</strong></div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ord.customer_phone || ord.customer_email}</div>
-                            </td>
-                            <td>
-                              <div style={{ fontSize: '0.8rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ord.customer_address}>
-                                {ord.customer_address || 'N/A'}
-                              </div>
-                            </td>
-                            <td style={{ fontSize: '0.8rem' }}>
-                              {ord.items && ord.items.map((it, idx) => (
-                                <div key={idx}>
-                                  {it.product_name} ({it.quantity_description}) x {it.quantity}
+              <div className="glass-card animate-slide-up" style={{ marginTop: '2rem' }} id="customer-orders-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
+                  <h2 style={{ margin: 0 }}>Customer Orders</h2>
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <input
+                      type="text"
+                      placeholder="Search orders..."
+                      value={orderSearchQuery}
+                      onChange={(e) => setOrderSearchQuery(e.target.value)}
+                      style={{
+                        padding: '0.4rem 0.8rem',
+                        paddingLeft: '2rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        color: 'var(--text-main)',
+                        fontSize: '0.85rem',
+                        outline: 'none',
+                        minWidth: '200px',
+                        backdropFilter: 'blur(5px)',
+                        transition: 'all 0.3s ease'
+                      }}
+                    />
+                    <svg style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text-muted)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </div>
+                </div>
+                <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                  {orders.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No orders placed yet.</p>
+                  ) : (
+                    <table className="premium-table">
+                      <thead>
+                        <tr>
+                          <th>Order No</th>
+                          <th>Customer</th>
+                          <th>Address</th>
+                          <th>Items</th>
+                          <th>Quantity</th>
+                          <th>Total</th>
+                          <th>Method</th>
+                          <th>Date</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...orders]
+                          .filter((ord) => {
+                            if (!orderSearchQuery) return true;
+                            const q = orderSearchQuery.toLowerCase();
+                            const orderIdStr = String(ord.order_id);
+                            const customerName = ord.customer_name?.toLowerCase() || '';
+                            const customerAddress = ord.customer_address?.toLowerCase() || '';
+                            const paymentMethod = ord.payment_method?.toLowerCase() || '';
+                            const status = ord.status?.toLowerCase() || '';
+                            const phoneOrEmail = (ord.customer_phone || ord.customer_email || '').toLowerCase();
+                            const itemsText = ord.items ? ord.items.map(it => it.product_name.toLowerCase()).join(' ') : '';
+                            return (
+                              orderIdStr.includes(q) ||
+                              customerName.includes(q) ||
+                              customerAddress.includes(q) ||
+                              paymentMethod.includes(q) ||
+                              status.includes(q) ||
+                              phoneOrEmail.includes(q) ||
+                              itemsText.includes(q)
+                            );
+                          })
+                          .sort((a, b) => a.order_id - b.order_id)
+                          .map((ord) => (
+                            <tr key={ord.order_id}>
+                              <td><strong>{ord.order_id}</strong></td>
+                              <td>
+                                <div><strong>{ord.customer_name}</strong></div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ord.customer_phone || ord.customer_email}</div>
+                              </td>
+                              <td>
+                                <div style={{ fontSize: '0.8rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ord.customer_address}>
+                                  {ord.customer_address || 'N/A'}
                                 </div>
-                              ))}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <strong>{ord.items ? ord.items.reduce((acc, item) => acc + item.quantity, 0) : 0}</strong>
-                            </td>
-                            <td><strong>Rs. {ord.total_amount}</strong></td>
-                            <td style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                              {ord.payment_method || 'N/A'}
-                            </td>
-                            <td style={{ fontSize: '0.8rem' }}>
-                              {ord.order_date ? formatDateDisplay(ord.order_date.split(' ')[0]) : 'N/A'}
-                            </td>
-                            <td>
-                              <span className={`badge ${ord.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>
-                                {ord.status}
-                              </span>
-                            </td>
-                            <td>
-                              {ord.status === 'Pending' ? (
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  onClick={() => handleFulfillOrder(ord.order_id)}
-                                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                  <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                  Fulfill
-                                </button>
-                              ) : (
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Completed</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                )}
+                              </td>
+                              <td style={{ fontSize: '0.8rem' }}>
+                                {ord.items && ord.items.map((it, idx) => (
+                                  <div key={idx}>
+                                    {it.product_name} ({it.quantity_description}) x {it.quantity}
+                                  </div>
+                                ))}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <strong>{ord.items ? ord.items.reduce((acc, item) => acc + item.quantity, 0) : 0}</strong>
+                              </td>
+                              <td><strong>Rs. {ord.total_amount}</strong></td>
+                              <td style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                                {ord.payment_method || 'N/A'}
+                              </td>
+                              <td style={{ fontSize: '0.8rem' }}>
+                                {ord.order_date ? formatDateDisplay(ord.order_date.split(' ')[0]) : 'N/A'}
+                              </td>
+                              <td>
+                                <span className={`badge ${ord.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>
+                                  {ord.status}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {ord.status === 'Pending' ? (
+                                    <button
+                                      className="btn btn-primary btn-sm"
+                                      onClick={() => handleFulfillOrder(ord.order_id)}
+                                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                      Fulfill
+                                    </button>
+                                  ) : (
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Completed</span>
+                                  )}
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => handleDeleteOrder(ord.order_id)}
+                                    title="Delete Order"
+                                    style={{
+                                      padding: '0.25rem 0.5rem',
+                                      fontSize: '0.75rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      background: 'rgba(255, 90, 95, 0.12)',
+                                      border: '1px solid rgba(255, 90, 95, 0.2)',
+                                      color: 'var(--accent-danger)',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="3 6 5 6 21 6"></polyline>
+                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                                    </svg>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
-            </div>
-              )}
+            )}
 
               {adminSubTab === 'batches' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginTop: '1rem' }}>
@@ -7072,6 +6570,400 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Floating Chatbot Widget */}
+      {currentUser && (
+        <>
+          {/* Chatbot Trigger Bubble */}
+          <button
+            className={`chat-widget-trigger ${isChatOpen ? 'active' : ''}`}
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            title="AI Assistant"
+          >
+            {isChatOpen ? (
+              <svg style={{ width: '24px', height: '24px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            ) : (
+              <svg style={{ width: '24px', height: '24px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            )}
+          </button>
+
+          {/* Chatbot Window */}
+          {isChatOpen && (
+            <div className="chat-widget-container animate-slide-up">
+              {currentUser.role === 'admin' ? (
+                // ==================== ADMIN CHAT WINDOW ====================
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  {/* Title Bar */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '1rem 1.25rem',
+                    borderBottom: '1px solid var(--border-color)',
+                    background: 'rgba(30, 41, 59, 0.4)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>📋</span>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#fff', fontWeight: 700 }}>Inventory Copilot</h4>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--accent-secondary)', fontWeight: 600 }}>Active Link</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Clear inventory chat history?")) {
+                            setAiMessagesAdmin([
+                              {
+                                id: 1,
+                                sender: 'assistant',
+                                text: "Hello Admin! I am your **Sharadha Stores Inventory Copilot**. I can help you check stock levels, view expiring batches, review ingredient stocks, or plan restocking. What inventory queries do you have today? 📋",
+                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                              }
+                            ]);
+                          }
+                        }}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-muted)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Messages Thread */}
+                  <div
+                    id="ai-chat-thread-widget-admin"
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1rem',
+                      scrollBehavior: 'smooth'
+                    }}
+                  >
+                    {aiMessagesAdmin.map((msg) => {
+                      const isUser = msg.sender === 'user';
+                      return (
+                        <div
+                          key={msg.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: isUser ? 'flex-end' : 'flex-start',
+                            width: '100%',
+                            animation: 'fadeIn 0.2s ease-in-out'
+                          }}
+                        >
+                          <div style={{
+                            maxWidth: '85%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: isUser ? 'flex-end' : 'flex-start'
+                          }}>
+                            <div style={{
+                              padding: '0.75rem 1rem',
+                              borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                              background: isUser ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.05)',
+                              color: isUser ? '#000000' : 'var(--text-main)',
+                              border: isUser ? 'none' : '1px solid var(--border-color)',
+                              boxShadow: isUser ? '0 4px 12px rgba(255, 159, 28, 0.2)' : 'none',
+                              fontSize: '0.85rem',
+                              lineHeight: '1.4',
+                              whiteSpace: 'pre-line'
+                            }}>
+                              {msg.text.split('\n').map((line, lIdx) => {
+                                const parts = line.split('**');
+                                return (
+                                  <div key={lIdx} style={{ minHeight: '1.1em' }}>
+                                    {parts.map((part, pIdx) => {
+                                      if (pIdx % 2 === 1) {
+                                        return <strong key={pIdx} style={{ color: isUser ? '#000' : '#fff', fontWeight: 700 }}>{part}</strong>;
+                                      }
+                                      const subParts = part.split('_');
+                                      return subParts.map((subPart, sIdx) => {
+                                        if (sIdx % 2 === 1) {
+                                          return <em key={sIdx} style={{ opacity: 0.9 }}>{subPart}</em>;
+                                        }
+                                        return <span key={sIdx}>{subPart}</span>;
+                                      });
+                                    })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem', padding: '0 0.2rem' }}>
+                              {msg.timestamp}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {isAiTypingAdmin && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
+                        <div style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', padding: '0.75rem 1.25rem', borderRadius: '16px 16px 16px 4px', color: 'var(--text-muted)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="dot-pulse"></span>
+                          <span>Analyzing...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Input Bar */}
+                  <form
+                    onSubmit={handleSendAdminAIMessage}
+                    style={{
+                      padding: '0.75rem',
+                      borderTop: '1px solid var(--border-color)',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ask copilot..."
+                      value={aiInputAdmin}
+                      onChange={(e) => setAiInputAdmin(e.target.value)}
+                      disabled={isAiTypingAdmin}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(255, 255, 255, 0.04)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '10px',
+                        padding: '0.5rem 0.75rem',
+                        fontSize: '0.85rem',
+                        color: 'var(--text-main)',
+                        outline: 'none'
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isAiTypingAdmin || !aiInputAdmin.trim()}
+                      style={{
+                        background: 'var(--accent-primary)',
+                        color: '#000000',
+                        border: 'none',
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                // ==================== CLIENT CHAT WINDOW ====================
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  {/* Title Bar */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '1rem 1.25rem',
+                    borderBottom: '1px solid var(--border-color)',
+                    background: 'rgba(30, 41, 59, 0.4)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.2rem' }}>💬</span>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#fff', fontWeight: 700 }}>Sharadha Stores AI</h4>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--accent-secondary)', fontWeight: 600 }}>Active Assistant</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Clear chat history?")) {
+                            setAiMessagesClient([
+                              {
+                                id: 1,
+                                sender: 'assistant',
+                                text: "Hello! I am your **Sharadha Stores Virtual Assistant**. I can help you search for home-cooked foods, check ingredients, tell you about current prices and packaging options, check order details, or give cooking recommendations. How can I help you today? 🍲",
+                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                              }
+                            ]);
+                          }
+                        }}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-muted)',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Messages Thread */}
+                  <div
+                    id="ai-chat-thread-widget-client"
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1rem',
+                      scrollBehavior: 'smooth'
+                    }}
+                  >
+                    {aiMessagesClient.map((msg) => {
+                      const isUser = msg.sender === 'user';
+                      return (
+                        <div
+                          key={msg.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: isUser ? 'flex-end' : 'flex-start',
+                            width: '100%',
+                            animation: 'fadeIn 0.2s ease-in-out'
+                          }}
+                        >
+                          <div style={{
+                            maxWidth: '85%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: isUser ? 'flex-end' : 'flex-start'
+                          }}>
+                            <div style={{
+                              padding: '0.75rem 1rem',
+                              borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                              background: isUser ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.05)',
+                              color: isUser ? '#000000' : 'var(--text-main)',
+                              border: isUser ? 'none' : '1px solid var(--border-color)',
+                              boxShadow: isUser ? '0 4px 12px rgba(255, 159, 28, 0.2)' : 'none',
+                              fontSize: '0.85rem',
+                              lineHeight: '1.4',
+                              whiteSpace: 'pre-line'
+                            }}>
+                              {msg.text.split('\n').map((line, lIdx) => {
+                                const parts = line.split('**');
+                                return (
+                                  <div key={lIdx} style={{ minHeight: '1.1em' }}>
+                                    {parts.map((part, pIdx) => {
+                                      if (pIdx % 2 === 1) {
+                                        return <strong key={pIdx} style={{ color: isUser ? '#000' : '#fff', fontWeight: 700 }}>{part}</strong>;
+                                      }
+                                      const subParts = part.split('_');
+                                      return subParts.map((subPart, sIdx) => {
+                                        if (sIdx % 2 === 1) {
+                                          return <em key={sIdx} style={{ opacity: 0.9 }}>{subPart}</em>;
+                                        }
+                                        return <span key={sIdx}>{subPart}</span>;
+                                      });
+                                    })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem', padding: '0 0.2rem' }}>
+                              {msg.timestamp}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {isAiTypingClient && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
+                        <div style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', padding: '0.75rem 1.25rem', borderRadius: '16px 16px 16px 4px', color: 'var(--text-muted)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="dot-pulse"></span>
+                          <span>Typing...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Input Bar */}
+                  <form
+                    onSubmit={handleSendClientAIMessage}
+                    style={{
+                      padding: '0.75rem',
+                      borderTop: '1px solid var(--border-color)',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ask assistant..."
+                      value={aiInputClient}
+                      onChange={(e) => setAiInputClient(e.target.value)}
+                      disabled={isAiTypingClient}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(255, 255, 255, 0.04)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '10px',
+                        padding: '0.5rem 0.75rem',
+                        fontSize: '0.85rem',
+                        color: 'var(--text-main)',
+                        outline: 'none'
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isAiTypingClient || !aiInputClient.trim()}
+                      style={{
+                        background: 'var(--accent-primary)',
+                        color: '#000000',
+                        border: 'none',
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
     </div>

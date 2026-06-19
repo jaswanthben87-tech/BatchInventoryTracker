@@ -1922,6 +1922,26 @@ def fulfill_order(order_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/orders/<int:order_id>', methods=['DELETE'])
+def delete_order(order_id):
+    try:
+        conn = get_db()
+        order = conn.execute("SELECT order_id FROM orders WHERE order_id = ?", (order_id,)).fetchone()
+        if not order:
+            conn.close()
+            return jsonify({"error": "Order not found"}), 404
+            
+        conn.execute("DELETE FROM batch_deductions WHERE order_item_id IN (SELECT order_item_id FROM order_items WHERE order_id = ?)", (order_id,))
+        conn.execute("DELETE FROM order_items WHERE order_id = ?", (order_id,))
+        conn.execute("DELETE FROM checkout_records WHERE order_id = ?", (order_id,))
+        conn.execute("DELETE FROM delivery_dispatch_status WHERE order_id = ?", (order_id,))
+        conn.execute("DELETE FROM orders WHERE order_id = ?", (order_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"message": f"Order #{order_id} deleted successfully."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/razorpay/verify', methods=['POST'])
 def verify_razorpay_payment():
     data = request.get_json() or {}
