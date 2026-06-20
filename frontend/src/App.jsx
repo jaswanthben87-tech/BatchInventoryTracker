@@ -491,7 +491,7 @@ export default function App() {
   const [dashboardSummary, setDashboardSummary] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [orders, setOrders] = useState([])
-  const [newOrderAlert, setNewOrderAlert] = useState(false)
+  const [newOrderAlert, setNewOrderAlert] = useState(0)
   const [selectedPrices, setSelectedPrices] = useState({}) // product_id -> selected price index
   
   // AI Assistant States
@@ -971,7 +971,8 @@ export default function App() {
             const orderData = await orderRes.json()
             setOrders(prev => {
               if (orderData.length > prev.length && prev.length > 0) {
-                setNewOrderAlert(true)
+                const diff = orderData.length - prev.length;
+                setNewOrderAlert(prevAlert => prevAlert + diff);
               }
               return orderData
             })
@@ -2727,7 +2728,7 @@ export default function App() {
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => {
-                    setNewOrderAlert(false);
+                    setNewOrderAlert(0);
                     setAdminSubTab('orders');
                     setActiveTab('admin');
                   }}
@@ -2751,12 +2752,38 @@ export default function App() {
                   </svg>
                 </button>
 
+                {/* Red dot badge with the order number */}
+                {newOrderAlert > 0 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      background: 'var(--accent-danger, #ff5a5f)',
+                      color: '#ffffff',
+                      fontSize: '0.65rem',
+                      fontWeight: 'bold',
+                      borderRadius: '50%',
+                      width: '16px',
+                      height: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1.5px solid var(--bg-primary, #0f172a)',
+                      boxShadow: '0 0 8px rgba(255, 90, 95, 0.6)',
+                      pointerEvents: 'none'
+                    }}
+                  >
+                    {newOrderAlert}
+                  </div>
+                )}
+
                 {/* Wordless Message Popup Alert */}
-                {newOrderAlert && (
+                {newOrderAlert > 0 && (
                   <div
                     className="animate-slide-up"
                     onClick={() => {
-                      setNewOrderAlert(false);
+                      setNewOrderAlert(0);
                       setAdminSubTab('orders');
                       setActiveTab('admin');
                     }}
