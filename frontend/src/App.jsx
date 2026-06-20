@@ -491,6 +491,7 @@ export default function App() {
   const [dashboardSummary, setDashboardSummary] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [orders, setOrders] = useState([])
+  const [newOrderAlert, setNewOrderAlert] = useState(false)
   const [selectedPrices, setSelectedPrices] = useState({}) // product_id -> selected price index
   
   // AI Assistant States
@@ -960,6 +961,38 @@ export default function App() {
     }, 0)
     return () => clearTimeout(timer)
   }, [activeTab, fetchData])
+
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'admin') {
+      const interval = setInterval(async () => {
+        try {
+          const orderRes = await fetch('/api/orders')
+          if (orderRes.ok) {
+            const orderData = await orderRes.json()
+            setOrders(prev => {
+              if (orderData.length > prev.length && prev.length > 0) {
+                setNewOrderAlert(true)
+              }
+              return orderData
+            })
+          }
+          const summaryRes = await fetch('/api/dashboard/summary')
+          if (summaryRes.ok) {
+            const summaryData = await summaryRes.json()
+            setDashboardSummary(summaryData)
+          }
+          const notifRes = await fetch('/api/notifications')
+          if (notifRes.ok) {
+            const notifData = await notifRes.json()
+            setNotifications(notifData)
+          }
+        } catch (e) {
+          console.error("Polling error:", e)
+        }
+      }, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [currentUser])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -2689,7 +2722,76 @@ export default function App() {
 
           {currentUser && currentUser.role === 'admin' && (
             <>
+              {/* Message Box Button with Notification Alert */}
+              <div style={{ position: 'relative', display: 'inline-block', marginRight: '0.5rem' }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setNewOrderAlert(false);
+                    setAdminSubTab('orders');
+                    setActiveTab('admin');
+                  }}
+                  title="Messages & Order Notifications"
+                  style={{
+                    border: '1px solid var(--accent-primary)',
+                    color: 'var(--accent-primary)',
+                    background: 'rgba(255, 159, 28, 0.05)',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    transition: 'var(--transition-smooth)'
+                  }}
+                >
+                  <svg style={{ width: '15px', height: '15px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                </button>
 
+                {/* Wordless Message Popup Alert */}
+                {newOrderAlert && (
+                  <div
+                    className="animate-slide-up"
+                    onClick={() => {
+                      setNewOrderAlert(false);
+                      setAdminSubTab('orders');
+                      setActiveTab('admin');
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '40px',
+                      right: '0',
+                      background: 'var(--bg-tertiary, #192239)',
+                      border: '1px solid var(--accent-primary)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                      zIndex: 100,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      animation: 'scaleUp 0.2s ease-out'
+                    }}
+                  >
+                    <div style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '50%',
+                      background: 'var(--accent-danger, #ff5a5f)',
+                      animation: 'pulse 1.2s infinite'
+                    }} />
+                    <svg style={{ width: '14px', height: '14px', color: 'var(--accent-primary)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                  </div>
+                )}
+              </div>
 
               {/* Theme Toggle Button for Admin */}
               <button 
@@ -3876,7 +3978,7 @@ export default function App() {
 
                           <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center' }}>
                             {/* Left Prev Button */}
-                            {catProducts.length > 4 && (
+                            {catProducts.length > 5 && (
                               <button
                                 onClick={() => {
                                   const container = document.getElementById(`carousel-${catName.replace(/\s+/g, '-')}`);
@@ -4000,7 +4102,7 @@ export default function App() {
                             </div>
 
                             {/* Right Next Button */}
-                            {catProducts.length > 4 && (
+                            {catProducts.length > 5 && (
                               <button
                                 onClick={() => {
                                   const container = document.getElementById(`carousel-${catName.replace(/\s+/g, '-')}`);
