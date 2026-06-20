@@ -67,27 +67,27 @@ def seed_data():
     # 2. Products
     products = [
         # category_id, name, description, image_url, shelf_life_days
-        (1, "Avakaya Mango Pickle", "Traditional Andhra style raw mango pickle prepared with mustard powder and sesame oil.", "https://images.unsplash.com/photo-1601050690597-df056fb4ce78?auto=format&fit=crop&w=400&q=80", 90),
-        (1, "Garlic Pickle", "Spicy and tangy garlic cloves pickle marinated in traditional spice mix.", "https://images.unsplash.com/photo-1589135306090-e55523b6b64d?auto=format&fit=crop&w=400&q=80", 90),
-        (2, "Garam Masala", "A blend of ground spices including cardamom, cinnamon, cloves, cumin, and coriander.", "https://images.unsplash.com/photo-1596797038530-2c107229654b?auto=format&fit=crop&w=400&q=80", 120),
-        (2, "Sambar Powder", "A flavorful spice powder blend used in making traditional South Indian lentil stew.", "https://images.unsplash.com/photo-1608797178974-15b35a61d121?auto=format&fit=crop&w=400&q=80", 120),
-        (3, "Ghee Mysore Pak", "Rich and melt-in-mouth traditional sweet made of chickpea flour, sugar, and generous pure ghee.", "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=400&q=80", 15),
-        (3, "Rava Laddu", "Traditional sweet balls made of roasted semolina, sugar, ghee, cardamom, and dry fruits.", "https://images.unsplash.com/photo-1626132647523-66f5bf380027?auto=format&fit=crop&w=400&q=80", 12),
-        (4, "Instant Idli Mix", "Easy-to-make idli batter premix made of clean ground rice and urad dal.", "https://images.unsplash.com/photo-1668236543090-82eba5ee5976?auto=format&fit=crop&w=400&q=80", 60)
+        (1, "Avakaya Mango Pickle", "Traditional Andhra style raw mango pickle prepared with mustard powder and sesame oil.", "/mango_pickle.png", 90),
+        (1, "Garlic Pickle", "Spicy and tangy garlic cloves pickle marinated in traditional spice mix.", "/mango_pickle.png", 90),
+        (2, "Garam Masala", "A blend of ground spices including cardamom, cinnamon, cloves, cumin, and coriander.", "/spice_powders.png", 120),
+        (2, "Sambar Powder", "A flavorful spice powder blend used in making traditional South Indian lentil stew.", "/spice_powders.png", 120),
+        (3, "Ghee Mysore Pak", "Rich and melt-in-mouth traditional sweet made of chickpea flour, sugar, and generous pure ghee.", "/mysore_pak.png", 15),
+        (3, "Rava Laddu", "Traditional sweet balls made of roasted semolina, sugar, ghee, cardamom, and dry fruits.", "/mysore_pak.png", 12),
+        (4, "Instant Idli Mix", "Easy-to-make idli batter premix made of clean ground rice and urad dal.", "/spice_powders.png", 60)
     ]
     cursor.executemany("INSERT INTO products (category_id, name, description, image_url, shelf_life_days) VALUES (?, ?, ?, ?, ?)", products)
     conn.commit()
     print("Products seeded.")
-
+ 
     # 3. Product Images (additional primary URLs)
     product_images = [
-        (1, "https://images.unsplash.com/photo-1601050690597-df056fb4ce78?auto=format&fit=crop&w=400&q=80", 1),
-        (2, "https://images.unsplash.com/photo-1589135306090-e55523b6b64d?auto=format&fit=crop&w=400&q=80", 1),
-        (3, "https://images.unsplash.com/photo-1596797038530-2c107229654b?auto=format&fit=crop&w=400&q=80", 1),
-        (4, "https://images.unsplash.com/photo-1608797178974-15b35a61d121?auto=format&fit=crop&w=400&q=80", 1),
-        (5, "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=400&q=80", 1),
-        (6, "https://images.unsplash.com/photo-1626132647523-66f5bf380027?auto=format&fit=crop&w=400&q=80", 1),
-        (7, "https://images.unsplash.com/photo-1668236543090-82eba5ee5976?auto=format&fit=crop&w=400&q=80", 1)
+        (1, "/mango_pickle.png", 1),
+        (2, "/mango_pickle.png", 1),
+        (3, "/spice_powders.png", 1),
+        (4, "/spice_powders.png", 1),
+        (5, "/mysore_pak.png", 1),
+        (6, "/mysore_pak.png", 1),
+        (7, "/spice_powders.png", 1)
     ]
     cursor.executemany("INSERT INTO product_images (product_id, url, is_primary) VALUES (?, ?, ?)", product_images)
     conn.commit()
