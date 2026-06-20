@@ -2778,7 +2778,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Wordless Message Popup Alert */}
+                {/* Text Message Popup Alert */}
                 {newOrderAlert > 0 && (
                   <div
                     className="animate-slide-up"
@@ -2789,33 +2789,64 @@ export default function App() {
                     }}
                     style={{
                       position: 'absolute',
-                      top: '40px',
+                      top: '42px',
                       right: '0',
-                      background: 'var(--bg-tertiary, #192239)',
-                      border: '1px solid var(--accent-primary)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-                      zIndex: 100,
+                      background: 'var(--bg-tertiary, #1e293b)',
+                      border: '1.5px solid var(--accent-primary)',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
+                      zIndex: 1000,
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px',
+                      gap: '8px',
                       cursor: 'pointer',
-                      animation: 'scaleUp 0.2s ease-out'
+                      animation: 'scaleUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      whiteSpace: 'nowrap'
                     }}
                   >
+                    {/* Small pointer triangle on top of speech bubble pointing to the message button */}
                     <div style={{
-                      width: '10px',
-                      height: '10px',
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '10px',
+                      width: '0',
+                      height: '0',
+                      borderLeft: '6px solid transparent',
+                      borderRight: '6px solid transparent',
+                      borderBottom: '6px solid var(--accent-primary)'
+                    }} />
+
+                    {/* Small pulsing red indicator */}
+                    <div style={{
+                      width: '8px',
+                      height: '8px',
                       borderRadius: '50%',
                       background: 'var(--accent-danger, #ff5a5f)',
                       animation: 'pulse 1.2s infinite'
                     }} />
-                    <svg style={{ width: '14px', height: '14px', color: 'var(--accent-primary)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
+                    
+                    {/* Message text */}
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                      New Customer Order Placed!
+                    </span>
+
+                    {/* Simple close button */}
+                    <span 
+                      style={{ 
+                        marginLeft: '6px', 
+                        color: 'var(--text-muted)', 
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        padding: '2px 4px'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNewOrderAlert(0);
+                      }}
+                    >
+                      ✕
+                    </span>
                   </div>
                 )}
               </div>
@@ -4546,66 +4577,6 @@ export default function App() {
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Discarded Stock</div>
                 </div>
                 <div className="stat-icon" style={{ color: 'var(--text-muted)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></div>
-              </div>
-
-              <div 
-                className={`glass-card stat-card ${newOrderAlert > 0 ? 'animate-pulse-glow' : ''}`}
-                style={{ 
-                  borderLeft: newOrderAlert > 0 ? '3px solid var(--accent-danger)' : '3px solid var(--accent-primary)',
-                  cursor: 'pointer',
-                  position: 'relative'
-                }}
-                onClick={() => {
-                  setNewOrderAlert(0);
-                  setAdminSubTab('orders');
-                }}
-              >
-                <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Message Box Alerts</div>
-                  <div className="stat-num" style={{ color: newOrderAlert > 0 ? 'var(--accent-danger)' : 'var(--text-main)' }}>
-                    {newOrderAlert}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>New Order Notifications</div>
-                </div>
-                <div className="stat-icon" style={{ color: newOrderAlert > 0 ? 'var(--accent-danger)' : 'var(--text-muted)' }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}>
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
-                </div>
-
-                {/* Popup alert on the dashboard card itself */}
-                {newOrderAlert > 0 && (
-                  <div
-                    className="animate-slide-up"
-                    style={{
-                      position: 'absolute',
-                      bottom: '-25px',
-                      right: '15px',
-                      background: 'var(--bg-tertiary, #192239)',
-                      border: '1px solid var(--accent-danger)',
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      boxShadow: '0 6px 18px rgba(0,0,0,0.5)',
-                      zIndex: 10,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: 'var(--accent-danger)',
-                      animation: 'scaleUp 0.2s ease-out'
-                    }}
-                  >
-                    <div style={{
-                      width: '6px',
-                      height: '6px',
-                      borderRadius: '50%',
-                      background: 'var(--accent-danger, #ff5a5f)',
-                      animation: 'pulse 1.2s infinite'
-                    }} />
-                    <span>!</span>
-                  </div>
-                )}
               </div>
             </div>
                   
