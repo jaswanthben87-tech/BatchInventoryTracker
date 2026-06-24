@@ -229,13 +229,15 @@ def init_db():
             cur = conn.execute("""
                 CREATE TABLE IF NOT EXISTS admin_credentials (
                     username TEXT PRIMARY KEY,
-                    password TEXT NOT NULL
+                    password TEXT NOT NULL,
+                    name TEXT DEFAULT 'Admin Manager',
+                    staff_role TEXT DEFAULT 'Super Admin'
                 );
             """)
             cur.close()
             cur = conn.execute("""
-                INSERT INTO admin_credentials (username, password)
-                VALUES ('admin@sharadhastores.com', 'adminpassword')
+                INSERT INTO admin_credentials (username, password, name, staff_role)
+                VALUES ('sharadhastores4@gmail.com', 'adminpassword', 'Admin Manager', 'Super Admin')
                 ON CONFLICT (username) DO NOTHING;
             """)
             cur.close()
@@ -243,26 +245,30 @@ def init_db():
             cur = conn.execute("""
                 CREATE TABLE IF NOT EXISTS admin_credentials (
                     username VARCHAR(255) PRIMARY KEY,
-                    password TEXT NOT NULL
+                    password TEXT NOT NULL,
+                    name TEXT DEFAULT 'Admin Manager',
+                    staff_role TEXT DEFAULT 'Super Admin'
                 );
             """)
             cur.close()
             cur = conn.execute("""
-                INSERT IGNORE INTO admin_credentials (username, password)
-                VALUES ('admin@sharadhastores.com', 'adminpassword');
+                INSERT IGNORE INTO admin_credentials (username, password, name, staff_role)
+                VALUES ('sharadhastores4@gmail.com', 'adminpassword', 'Admin Manager', 'Super Admin');
             """)
             cur.close()
         else:
             cur = conn.execute("""
                 CREATE TABLE IF NOT EXISTS admin_credentials (
                     username TEXT PRIMARY KEY,
-                    password TEXT NOT NULL
+                    password TEXT NOT NULL,
+                    name TEXT DEFAULT 'Admin Manager',
+                    staff_role TEXT DEFAULT 'Super Admin'
                 );
             """)
             cur.close()
             cur = conn.execute("""
-                INSERT OR IGNORE INTO admin_credentials (username, password)
-                VALUES ('admin@sharadhastores.com', 'adminpassword');
+                INSERT OR IGNORE INTO admin_credentials (username, password, name, staff_role)
+                VALUES ('sharadhastores4@gmail.com', 'adminpassword', 'Admin Manager', 'Super Admin');
             """)
             cur.close()
         conn.commit()

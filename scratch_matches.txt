@@ -1,0 +1,11 @@
+676: 'Avakaya Mango Pickle': "🌶️ **Avakaya Mango Pickle serving suggestions**:\n- Pair it with steaming hot white rice, a generous dollop of pure ghee, and a side of roasted papad.\n- Serve it as a spicy condiment alongside curd rice (this is the absolute best combination!).\n- Mix it into potato salad for a tangy, Indian-inspired twist.",
+677: 'Garlic Pickle': "🧄 **Garlic Pickle serving suggestions**:\n- Serve with warm parathas, puris, or rotis.\n- Elevate simple dal-chawal (lentils and rice) with a spoonful of this rich, pungent pickle.\n- Spread a tiny amount inside a cheese sandwich before grilling for a savory garlic kick.",
+678: 'Ghee Mysore Pak': "🍬 **Ghee Mysore Pak dessert guide**:\n- Serve at room temperature at the end of festive meals.\n- Pair with a cup of hot South Indian filter coffee to balance the rich sweetness.\n- Slightly warm it up (3-5 seconds in a microwave) to make it melt-in-your-mouth soft.",
+679: 'Rava Laddu': "🧁 **Rava Laddu serving suggestions**:\n- Serve as an afternoon tea-time snack with chai.\n- Present as a quick dessert during family gatherings and celebrations.\n- Best enjoyed within 10 days of production for optimal texture.",
+680: 'Instant Idli Mix': "🥞 **Instant Idli Mix cooking guide**:\n1. Mix 1 cup of Idli Mix with 1 cup of sour curd/yogurt and 1/2 cup of water.\n2. Let the batter rest for 10-15 minutes.\n3. Pour into idli moulds and steam for 10-12 minutes on medium heat.\n4. Serve hot with coconut chutney and sambar!"
+684: reply = "🍛 **Culinary & Serving Suggestions**:\nTo get custom suggestions, please specify the product name in your question! For example:\n- _'Suggest a recipe using Avakaya Mango Pickle'_\n- _'How to cook Instant Idli Mix?'_";
+726: "1. **Pricing**: _'Price of Garlic Pickle'_ or _'Show product price list'_\n" +
+727: "2. **Recipes & Serving**: _'Suggest a recipe using Avakaya Mango Pickle'_\n" +
+930: title: 'Authentic Andhra Avakaya',
+935: title: 'Traditional Ghee Mysore Pak',
+941: subtitle: 'Freshly ground sambar powder and garam masala prepared from selected spice beans.'

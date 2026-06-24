@@ -252,3 +252,12 @@ CREATE TABLE IF NOT EXISTS notifications_log (
     message TEXT NOT NULL,
     sent_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Password Resets
+CREATE TABLE IF NOT EXISTS password_resets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    otp TEXT NOT NULL,
+    expiry_time TEXT NOT NULL,
+    is_used INTEGER DEFAULT 0
+);

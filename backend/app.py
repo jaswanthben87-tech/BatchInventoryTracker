@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 import datetime
 import os
+import traceback
 import smtplib
 import threading
 from email.mime.text import MIMEText
@@ -49,6 +50,18 @@ if os.path.exists(dotenv_path):
                     os.environ[key] = val
 
 import razorpay
+import google.generativeai as genai
+from groq import Groq
+
+# Initialize AI Clients
+gemini_api_key = os.environ.get('GEMINI_API_KEY', '')
+if gemini_api_key:
+    genai.configure(api_key=gemini_api_key)
+
+groq_api_key = os.environ.get('GROQ_API_KEY', '')
+groq_client = None
+if groq_api_key:
+    groq_client = Groq(api_key=groq_api_key)
 
 # Initialize Razorpay Client
 razorpay_key_id = os.environ.get('RAZORPAY_KEY_ID', '')
@@ -744,6 +757,8 @@ def handle_db_init():
         init_db()
         return jsonify({"message": "Database initialized successfully"}), 200
     except Exception as e:
+        print("LOGIN ERROR TRACEBACK:", flush=True)
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
@@ -756,11 +771,10 @@ def handle_login():
         if not username or not password:
             return jsonify({"error": "Missing username or password"}), 400
             
-        print(f"DEBUG LOGIN - Username: '{username}', Password: '{password}'", flush=True)
-            
+        
         conn = get_db()
         # 1. Check if Admin in Database
-        admin = conn.execute("SELECT username, password FROM admin_credentials WHERE username = ?", (username,)).fetchone()
+        admin = conn.execute("SELECT username, password, name, staff_role FROM admin_credentials WHERE username = ?", (username,)).fetchone()
         if admin:
             admin = dict(admin)
             if admin['password'] == password:
@@ -768,7 +782,8 @@ def handle_login():
                 return jsonify({
                     "success": True,
                     "role": "admin",
-                    "name": "Admin Manager",
+                    "name": admin.get('name', 'Admin Manager'),
+                    "staff_role": admin.get('staff_role', 'Super Admin'),
                     "email": admin['username'],
                     "token": "token_admin_sharadha"
                 }), 200
@@ -1476,6 +1491,8 @@ def process_order():
             total_amount = 0.0
             validated_items = []
             
+            subtotal = 0.0
+            
             for item in items:
                 p_id = item.get('product_id')
                 pr_id = item.get('price_id')
@@ -1493,7 +1510,7 @@ def process_order():
                     
                 price_val = price_record['price']
                 qty_desc = price_record['quantity_description']
-                total_amount += price_val * qty
+                subtotal += price_val * qty
                 validated_items.append({
                     "product_id": p_id,
                     "product_name": product['name'],
@@ -1503,6 +1520,18 @@ def process_order():
                     "qty_desc": qty_desc
                 })
                 
+            # Calculate discount and taxes
+            discount_amount = 0.0
+            if purchase_type == 'bulk':
+                discount_amount = subtotal * 0.10
+                
+            taxable_amount = subtotal - discount_amount
+            sgst = taxable_amount * 0.025
+            cgst = taxable_amount * 0.025
+            tax_amount = sgst + cgst
+            
+            total_amount = taxable_amount + tax_amount
+            
             # Perform FEFO inventory validation for each item (do NOT deduct yet)
             today_str = datetime.date.today().isoformat()
             
@@ -1525,7 +1554,7 @@ def process_order():
             # Insert Order record (starts as 'Pending' until fulfilled)
             cur = conn.cursor()
             order_status = 'Pending'
-            cur.execute("INSERT INTO orders (customer_id, total_amount, status) VALUES (?, ?, ?)", (customer_id, total_amount, order_status))
+            cur.execute("INSERT INTO orders (customer_id, total_amount, status, order_type, tax_amount, discount_amount) VALUES (?, ?, ?, ?, ?, ?)", (customer_id, total_amount, order_status, purchase_type, tax_amount, discount_amount))
             order_id = cur.lastrowid
             
             # Insert Order Items
@@ -1713,7 +1742,7 @@ def get_dashboard_summary():
             })
             
         # Query total revenue generated (only count Paid/fulfilled orders)
-        revenue_row = conn.execute("SELECT SUM(total_amount) as total_revenue FROM orders WHERE status = 'Paid'").fetchone()
+        revenue_row = conn.execute("SELECT SUM(total_amount) as total_revenue FROM orders WHERE status IN ('Paid', 'Dispatched', 'Delivered')").fetchone()
         total_revenue = round(float(revenue_row['total_revenue'] or 0.0), 2)
 
         summary = {
@@ -1786,43 +1815,6 @@ def get_suggestions():
 
 # ----------------- SUBSCRIPTIONS & ENQUIRIES ENDPOINTS -----------------
 
-@app.route('/api/subscriptions', methods=['POST', 'GET'])
-def handle_subscriptions():
-    try:
-        conn = get_db()
-        if request.method == 'POST':
-            data = request.get_json() or {}
-            customer_id = data.get('customer_id', 1) # default to seed customer
-            product_id = data.get('product_id')
-            frequency = data.get('frequency', 'Weekly') # Weekly, Bi-Weekly, Monthly
-            
-            if not product_id:
-                conn.close()
-                return jsonify({"error": "product_id is required"}), 400
-                
-            start_date_str = datetime.date.today().isoformat()
-            
-            conn.execute("""
-                INSERT INTO subscriptions (customer_id, product_id, frequency, start_date, status) 
-                VALUES (?, ?, ?, ?, 'Active')
-            """, (customer_id, product_id, frequency, start_date_str))
-            conn.commit()
-            conn.close()
-            return jsonify({"message": "Subscription created successfully", "status": "Active"}), 201
-        else:
-            # GET method: Retrieve subscriptions
-            subs = conn.execute("""
-                SELECT s.*, c.name as customer_name, p.name as product_name 
-                FROM subscriptions s
-                JOIN customers c ON s.customer_id = c.customer_id
-                JOIN products p ON s.product_id = p.product_id
-            """).fetchall()
-            results = [dict(s) for s in subs]
-            conn.close()
-            return jsonify(results), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/api/orders/status/<int:order_id>', methods=['GET'])
 def get_order_status(order_id):
     try:
@@ -1835,13 +1827,33 @@ def get_order_status(order_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
+def update_order_status(order_id):
+    try:
+        data = request.json
+        new_status = data.get('status')
+        if not new_status:
+            return jsonify({"error": "Missing status"}), 400
+            
+        conn = get_db()
+        if new_status == 'Dispatched':
+            conn.execute("UPDATE orders SET status = ?, dispatched_date = CURRENT_TIMESTAMP WHERE order_id = ?", (new_status, order_id))
+        elif new_status == 'Delivered':
+            conn.execute("UPDATE orders SET status = ?, delivered_date = CURRENT_TIMESTAMP WHERE order_id = ?", (new_status, order_id))
+        else:
+            conn.execute("UPDATE orders SET status = ? WHERE order_id = ?", (new_status, order_id))
+        conn.commit()
+        return jsonify({"message": "Order status updated successfully", "status": new_status}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/orders', methods=['GET'])
 def get_orders():
     try:
         conn = get_db()
         # Query all orders with customer details
         orders_rows = conn.execute("""
-            SELECT o.order_id, o.order_date, o.total_amount, o.status, 
+            SELECT o.order_id, o.order_date, o.dispatched_date, o.delivered_date, o.total_amount, o.status, o.order_type, o.tax_amount, o.discount_amount,
                    c.name as customer_name, c.phone as customer_phone, c.email as customer_email, c.address as customer_address,
                    cr.payment_method
             FROM orders o
@@ -2556,15 +2568,162 @@ def test_email_connection():
                      f"Please make sure you are using a 16-character Google App Password (not your standard login password) and that 2-Step Verification is enabled on your Gmail account."
         }), 500
 
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def forgot_password():
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip()
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+            
+        conn = get_db()
+        # Check if customer exists
+        customer = conn.execute("SELECT * FROM customers WHERE email = ?", (email,)).fetchone()
+        staff = conn.execute("SELECT * FROM admin_credentials WHERE username = ?", (email,)).fetchone()
+        
+        if not customer and not staff:
+            conn.close()
+            return jsonify({"error": "Email not found"}), 404
+            
+        import uuid
+        token = str(uuid.uuid4())
+        expiry_time = (datetime.datetime.now() + datetime.timedelta(minutes=15)).isoformat()
+        
+        conn.execute("INSERT INTO password_resets (email, otp, expiry_time, is_used) VALUES (?, ?, ?, 0)", (email, token, expiry_time))
+        conn.commit()
+        conn.close()
+        
+        # Get frontend origin to build the magic link
+        origin = request.headers.get('Origin', 'http://localhost:5173')
+        reset_link = f"{origin}/?reset_token={token}"
+        
+        msg = f"A password reset was requested for your account. Was this you?\n\nYes, it was me: {reset_link}\n\nIf you did not request this, please ignore this email."
+        html_msg = f"""
+        <h3>Sharadha Stores Security Alert</h3>
+        <p>A password reset was requested for your account. <strong>Was this you?</strong></p>
+        <div style="margin: 30px 0;">
+            <a href="{reset_link}" style="background-color: #3182CE; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 15px;">Yes, it was me</a>
+            <a href="#" style="background-color: #E2E8F0; color: #4A5568; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">No, ignore this</a>
+        </div>
+        <p>This link is valid for 15 minutes.</p>
+        """
+        send_email_alert_async(email, msg, html_msg)
+        
+        return jsonify({"message": "Magic link sent to email successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip()
+        token = data.get('token', '').strip()
+        new_password = data.get('new_password', '').strip()
+        
+        if not email or not token or not new_password:
+            return jsonify({"error": "Missing fields"}), 400
+            
+        conn = get_db()
+        reset_record = conn.execute("SELECT * FROM password_resets WHERE email = ? AND otp = ? AND is_used = 0 ORDER BY id DESC LIMIT 1", (email, token)).fetchone()
+        
+        if not reset_record:
+            conn.close()
+            return jsonify({"error": "Invalid or expired reset link"}), 400
+            
+        if reset_record['expiry_time'] < datetime.datetime.now().isoformat():
+            conn.close()
+            return jsonify({"error": "Reset link has expired"}), 400
+            
+        # Update password for customer or staff
+        customer = conn.execute("SELECT * FROM customers WHERE email = ?", (email,)).fetchone()
+        staff = conn.execute("SELECT * FROM admin_credentials WHERE username = ?", (email,)).fetchone()
+        
+        if customer:
+            conn.execute("UPDATE customers SET password = ? WHERE email = ?", (new_password, email))
+        elif staff:
+            conn.execute("UPDATE admin_credentials SET password = ? WHERE username = ?", (new_password, email))
+            
+        conn.execute("UPDATE password_resets SET is_used = 1 WHERE id = ?", (reset_record['id'],))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"message": "Password reset successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# --- Staff Management Endpoints ---
+
+@app.route('/api/admin/staff', methods=['GET'])
+def get_staff():
+    try:
+        conn = get_db()
+        staff = conn.execute("SELECT username, name, staff_role FROM admin_credentials").fetchall()
+        conn.close()
+        return jsonify([dict(s) for s in staff]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/staff', methods=['POST'])
+def add_staff():
+    try:
+        data = request.json
+        if not data or not data.get('username') or not data.get('password') or not data.get('staff_role'):
+            return jsonify({"error": "Missing required fields"}), 400
+        
+        conn = get_db()
+        # Check if username exists
+        existing = conn.execute("SELECT 1 FROM admin_credentials WHERE username = ?", (data['username'],)).fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"error": "Staff member with this email already exists"}), 400
+            
+        conn.execute("INSERT INTO admin_credentials (username, password, name, staff_role) VALUES (?, ?, ?, ?)",
+                     (data['username'], data['password'], data.get('name', 'Staff Member'), data['staff_role']))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "Staff member added successfully"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/staff/<email>', methods=['PUT'])
+def update_staff(email):
+    try:
+        data = request.json
+        if not data or not data.get('staff_role'):
+            return jsonify({"error": "Missing role to update"}), 400
+            
+        conn = get_db()
+        conn.execute("UPDATE admin_credentials SET staff_role = ?, name = ? WHERE username = ?", 
+                     (data['staff_role'], data.get('name', 'Staff Member'), email))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "Staff member updated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/staff/<email>', methods=['DELETE'])
+def delete_staff(email):
+    try:
+        if email == 'sharadhastores4@gmail.com':
+            return jsonify({"error": "Cannot delete primary Super Admin account"}), 400
+            
+        conn = get_db()
+        conn.execute("DELETE FROM admin_credentials WHERE username = ?", (email,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "Staff member deactivated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
-    # Initialize the database on startup just in case
-    init_db()
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+        init_db()
     
     # Start background scheduler thread
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+        import threading
         threading.Thread(target=run_background_scheduler, daemon=True).start()
         print("Background Scheduler Started.")
         
     # Run the dev server on port 5001
     app.run(debug=True, port=5001)
-

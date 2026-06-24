@@ -162,6 +162,17 @@ export default function App() {
   const [registerPhone, setRegisterPhone] = useState('')
   const [registerAddress, setRegisterAddress] = useState('')
 
+  // Forgot Password States
+  const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false)
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('')
+  const [isResetPasswordMode, setIsResetPasswordMode] = useState(false)
+  const [resetToken, setResetToken] = useState('')
+  const [resetNewPassword, setResetNewPassword] = useState('')
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('')
+  const [showResetPassword, setShowResetPassword] = useState(false)
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false)
+
+
   // Settings States
   const [settingsFirstName, setSettingsFirstName] = useState('')
   const [settingsLastName, setSettingsLastName] = useState('')
@@ -389,6 +400,32 @@ export default function App() {
     sessionStorage.setItem('activeTab', activeTab)
   }, [activeTab])
 
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset_token');
+    if (token) {
+      setResetToken(token);
+      setIsResetPasswordMode(true);
+      // Remove token from URL for cleaner look
+      window.history.replaceState(null, '', '/');
+    }
+  }, []);
+
+  const [adminSubTab, setAdminSubTab] = useState(() => {
+    try {
+      const savedSubTab = sessionStorage.getItem('adminSubTab')
+      if (savedSubTab) return savedSubTab
+    } catch { /* ignore */ }
+    return 'dashboard'
+  }) // 'dashboard' | 'orders' | 'batches' | 'catalog' | 'simulations' | 'alerts' | 'analytics'
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('adminSubTab', adminSubTab)
+    } catch { /* ignore */ }
+  }, [adminSubTab])
+
   // 1. Sync URL path to activeTab / login state when component mounts and on popstate
   useEffect(() => {
     const syncRouteWithUrl = () => {
@@ -404,10 +441,51 @@ export default function App() {
       
       // User is logged in
       if (user.role === 'admin') {
-        if (path !== '/app/admin') {
-          window.history.replaceState(null, '', '/app/admin');
+        const basePath = (user.staff_role === 'Inventory Manager' ? '/app/inventorymanager' : 
+                          user.staff_role === 'Sales Rep' ? '/app/salesrep' : '/app/admin');
+        
+        let targetSubTab = 'dashboard';
+        if (path.startsWith(basePath + '/')) {
+          const subPath = path.substring(basePath.length + 1);
+          const reverseMap = {
+            'dashboard': 'dashboard',
+            'orders': 'orders',
+            'productionbatches': 'batches',
+            'catalog': 'catalog',
+            'simulations': 'simulations',
+            'alerts': 'alerts',
+            'analytics': 'analytics',
+            'team': 'team'
+          };
+          if (reverseMap[subPath]) {
+            targetSubTab = reverseMap[subPath];
+            // Since setAdminSubTab is async, the expected path might momentarily mismatch,
+            // but the popstate/mount will handle it.
+            // We just need to make sure we don't immediately replace it with 'dashboard' 
+            // if we are correctly on a subpath.
+          }
         }
+        
+        const subTabMap = {
+          'dashboard': 'dashboard',
+          'orders': 'orders',
+          'batches': 'productionbatches',
+          'catalog': 'catalog',
+          'simulations': 'simulations',
+          'alerts': 'alerts',
+          'analytics': 'analytics',
+          'team': 'team'
+        };
+        
+        const expectedAdminPath = basePath + '/' + (subTabMap[targetSubTab] || 'dashboard');
+        
+        if (path !== expectedAdminPath) {
+          window.history.replaceState(null, '', expectedAdminPath);
+        }
+        
         setActiveTab('admin');
+        // Setting it here so that the UI updates to match the URL on direct load or back button
+        setAdminSubTab(targetSubTab);
         return;
       }
       
@@ -444,7 +522,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', syncRouteWithUrl);
   }, [currentUser]);
 
-  // 2. Sync URL path when activeTab changes
+  // 2. Sync URL path when activeTab or adminSubTab changes
   useEffect(() => {
     if (!currentUser) return;
     
@@ -454,34 +532,38 @@ export default function App() {
       'cart': 'cart',
       'my-orders': 'my-orders',
       'settings': 'settings',
-      'admin': 'admin',
+      'admin': (currentUser.staff_role === 'Inventory Manager' ? 'inventorymanager' : 
+                currentUser.staff_role === 'Sales Rep' ? 'salesrep' : 'admin'),
       'ai-assistant': 'ai-assistant'
     };
     
     const expectedSubPath = tabMap[activeTab] || 'store';
-    const expectedPath = `/app/${expectedSubPath}`;
+    let expectedPath = `/app/${expectedSubPath}`;
+    
+    if (activeTab === 'admin') {
+      const adminSubTabMap = {
+        'dashboard': 'dashboard',
+        'orders': 'orders',
+        'batches': 'productionbatches',
+        'catalog': 'catalog',
+        'simulations': 'simulations',
+        'alerts': 'alerts',
+        'analytics': 'analytics',
+        'team': 'team'
+      };
+      expectedPath += '/' + (adminSubTabMap[adminSubTab] || 'dashboard');
+    }
     
     if (path !== expectedPath) {
       window.history.pushState(null, '', expectedPath);
     }
-  }, [activeTab, currentUser]);
-  const [adminSubTab, setAdminSubTab] = useState(() => {
-    try {
-      const savedSubTab = sessionStorage.getItem('adminSubTab')
-      if (savedSubTab) return savedSubTab
-    } catch { /* ignore */ }
-    return 'dashboard'
-  }) // 'dashboard' | 'orders' | 'batches' | 'catalog' | 'simulations' | 'alerts' | 'analytics'
+  }, [activeTab, adminSubTab, currentUser]);
 
-  useEffect(() => {
-    try {
-      sessionStorage.setItem('adminSubTab', adminSubTab)
-    } catch { /* ignore */ }
-  }, [adminSubTab])
   const [hoveredDailyPoint, setHoveredDailyPoint] = useState(null) // { x, y, day, revenue, orders }
   const [hoveredMonthlyBar, setHoveredMonthlyBar] = useState(null) // { x, y, month, revenue, orders }
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const [staffMembers, setStaffMembers] = useState([])
   
   // Data States
   const [products, setProducts] = useState([])
@@ -810,6 +892,7 @@ export default function App() {
   const [editIngredientIsReferenced, setEditIngredientIsReferenced] = useState(false)
   const [batchesSearchQuery, setBatchesSearchQuery] = useState('') // For searching admin batches table
   const [orderSearchQuery, setOrderSearchQuery] = useState('')
+  const [orderTypeFilter, setOrderTypeFilter] = useState('All')
   const [changePasswordCurrent, setChangePasswordCurrent] = useState('')
   const [changePasswordNew, setChangePasswordNew] = useState('')
   const [changePasswordConfirm, setChangePasswordConfirm] = useState('')
@@ -817,13 +900,16 @@ export default function App() {
   
   // Shopping Cart States
   const [cart, setCart] = useState([])
+  const [bulkCart, setBulkCart] = useState([])
+  const [activeCartTab, setActiveCartTab] = useState('standard')
+  const [miniCartItem, setMiniCartItem] = useState(null)
+  const [miniCartTimer, setMiniCartTimer] = useState(null) // 'standard' or 'bulk'
   const [checkoutStatus, setCheckoutStatus] = useState(null)
   
   // Customer Modals
   const [selectedProductForRecipe, setSelectedProductForRecipe] = useState(null)
   const [orderProduct, setOrderProduct] = useState(null)
   const [orderActivePrice, setOrderActivePrice] = useState(null)
-  const [subscriptionProduct, setSubscriptionProduct] = useState(null)
   
   // Admin Detail Drawer
   const [selectedBatchForDetail, setSelectedBatchForDetail] = useState(null)
@@ -848,6 +934,10 @@ export default function App() {
   
   // Payment Method States
   const [upiPaymentModalDetails, setUpiPaymentModalDetails] = useState(null)
+  
+  // Staff Modal State
+  const [isStaffModalOpen, setIsStaffModalOpen] = useState(false)
+  const [staffRole, setStaffRole] = useState('Inventory Manager')
   const [isPaymentReceived, setIsPaymentReceived] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [codSuccessDetails, setCodSuccessDetails] = useState(null)
@@ -931,10 +1021,19 @@ export default function App() {
         const orderData = await orderRes.json()
         setOrders(orderData)
       }
+      
+      // Staff Members (Admin only)
+      if (currentUser && currentUser.role === 'admin') {
+        const staffRes = await fetch('/api/admin/staff')
+        if (staffRes.ok) {
+          const staffData = await staffRes.json()
+          setStaffMembers(staffData)
+        }
+      }
     } catch {
       showToast('Error fetching database records.', 'danger')
     }
-  }, [showToast, setProducts, setCategories, setIngredients, setBatches, setDashboardSummary, setNotifications, setOrders])
+  }, [showToast, setProducts, setCategories, setIngredients, setBatches, setDashboardSummary, setNotifications, setOrders, currentUser])
 
   // Slideshow Carousel State
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -1052,18 +1151,47 @@ export default function App() {
   // ---------------- E-COMMERCE LOGIC ----------------
 
   const handleAddToCart = (product, priceRecord) => {
+    // Show mini cart popup
+    const showMiniCart = (item) => {
+      setMiniCartItem(item);
+      if (miniCartTimer) clearTimeout(miniCartTimer);
+      setMiniCartTimer(setTimeout(() => setMiniCartItem(null), 5000));
+    };
+
     const existingIndex = cart.findIndex(
       (item) => item.product_id === product.product_id && item.price_id === priceRecord.price_id
     )
 
     if (existingIndex > -1) {
+      if (cart[existingIndex].quantity >= 24) {
+        // Shift to bulk cart
+        const newCart = [...cart]
+        const itemToShift = newCart.splice(existingIndex, 1)[0]
+        setCart(newCart)
+        
+        itemToShift.quantity = 25
+        const existingBulkIndex = bulkCart.findIndex(
+          (bItem) => bItem.product_id === itemToShift.product_id && bItem.price_id === itemToShift.price_id
+        )
+        if (existingBulkIndex > -1) {
+          const newBulkCart = [...bulkCart]
+          newBulkCart[existingBulkIndex].quantity += 25
+          setBulkCart(newBulkCart)
+        } else {
+          setBulkCart([...bulkCart, itemToShift])
+        }
+        
+        setActiveCartTab('bulk')
+        showToast("Standard limit exceeded! Item shifted to Bulk Order Cart with 10% discount.", "info")
+        return
+      }
       const newCart = [...cart]
       newCart[existingIndex].quantity += 1
       setCart(newCart)
+      showMiniCart({ ...newCart[existingIndex] })
+      showToast(`Increased quantity to ${newCart[existingIndex].quantity}.`)
     } else {
-      setCart([
-        ...cart,
-        {
+      const addedItem = {
           product_id: product.product_id,
           name: product.name,
           image_url: product.image_url,
@@ -1071,19 +1199,96 @@ export default function App() {
           qty_desc: priceRecord.quantity_description,
           price: priceRecord.price,
           quantity: 1,
+      };
+      setCart([
+        ...cart,
+        addedItem,
+      ])
+      showMiniCart(addedItem);
+      showToast(`Added ${product.name} (${priceRecord.quantity_description}) to cart.`)
+    }
+  }
+
+  const handleAddToBulkCart = (product, priceRecord) => {
+    const existingIndex = bulkCart.findIndex(
+      (item) => item.product_id === product.product_id && item.price_id === priceRecord.price_id
+    )
+
+    if (existingIndex > -1) {
+      if (bulkCart[existingIndex].quantity >= 50) {
+        showToast("Maximum bulk limit reached (50). Please create a separate order.", "warning")
+        return
+      }
+      const newCart = [...bulkCart]
+      newCart[existingIndex].quantity += 1
+      setBulkCart(newCart)
+      showToast(`Increased bulk quantity to ${newCart[existingIndex].quantity}.`)
+    } else {
+      setBulkCart([
+        ...bulkCart,
+        {
+          product_id: product.product_id,
+          name: product.name,
+          image_url: product.image_url,
+          price_id: priceRecord.price_id,
+          qty_desc: priceRecord.quantity_description,
+          price: priceRecord.price,
+          quantity: 25, // Start at minimum bulk quantity
         },
       ])
+      showToast(`Added ${product.name} (${priceRecord.quantity_description}) to Bulk Cart with minimum quantity 25.`)
     }
-    showToast(`Added ${product.name} (${priceRecord.quantity_description}) to cart.`)
   }
 
   const updateCartQuantity = (index, delta) => {
     const newCart = [...cart]
-    newCart[index].quantity += delta
+    const newQty = newCart[index].quantity + delta
+    
+    if (newQty > 24) {
+      // Shift to bulk cart
+      const itemToShift = newCart.splice(index, 1)[0]
+      setCart(newCart)
+      
+      itemToShift.quantity = 25
+      const existingBulkIndex = bulkCart.findIndex(
+        (bItem) => bItem.product_id === itemToShift.product_id && bItem.price_id === itemToShift.price_id
+      )
+      if (existingBulkIndex > -1) {
+        const newBulkCart = [...bulkCart]
+        newBulkCart[existingBulkIndex].quantity += 25
+        setBulkCart(newBulkCart)
+      } else {
+        setBulkCart([...bulkCart, itemToShift])
+      }
+      
+      setActiveCartTab('bulk')
+      showToast("Standard limit exceeded! Item shifted to Bulk Order Cart with 10% discount.", "info")
+      return
+    }
+    
+    newCart[index].quantity = newQty
     if (newCart[index].quantity <= 0) {
       newCart.splice(index, 1)
     }
     setCart(newCart)
+  }
+
+  const updateBulkCartQuantity = (index, delta) => {
+    const newCart = [...bulkCart]
+    const newQty = newCart[index].quantity + delta
+    if (newQty < 25 && delta < 0) {
+      if(window.confirm('Quantity below 25 will remove this item from Bulk Cart. Are you sure?')) {
+         newCart.splice(index, 1)
+         setBulkCart(newCart)
+      }
+      return
+    }
+    if (newQty > 50) {
+      showToast("Maximum bulk limit reached (50).", "warning")
+      return
+    }
+    newCart[index].quantity = newQty
+    setBulkCart(newCart)
   }
 
   const handleLoginSubmit = async (e) => {
@@ -1163,10 +1368,116 @@ export default function App() {
     }
   }
 
+
+  const handleForgotPasswordSubmit = async (e) => {
+    e.preventDefault()
+    if (!forgotPasswordEmail) return
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotPasswordEmail })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        showToast('If the email is registered, a magic link has been sent.', 'success')
+        setIsForgotPasswordMode(false)
+        setForgotPasswordEmail('')
+      } else {
+        showToast(data.error || 'Failed to send reset link.', 'danger')
+      }
+    } catch {
+      showToast('Connection error. Please try again.', 'danger')
+    }
+  }
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault()
+    if (!forgotPasswordEmail || !resetNewPassword || !resetConfirmPassword) {
+      showToast('All fields are required.', 'danger')
+      return
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      showToast('Passwords do not match.', 'danger')
+      return
+    }
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotPasswordEmail,
+          token: resetToken,
+          new_password: resetNewPassword
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        showToast('Password reset successfully! Please log in.', 'success')
+        setIsResetPasswordMode(false)
+        setResetToken('')
+        setResetNewPassword('')
+        setResetConfirmPassword('')
+        setForgotPasswordEmail('')
+      } else {
+        showToast(data.error || 'Failed to reset password.', 'danger')
+      }
+    } catch {
+      showToast('Connection error. Please try again.', 'danger')
+    }
+  }
+
+  const handleStaffRegisterSubmit = async (e) => {
+    e.preventDefault()
+    if (!registerName || !registerEmail || !registerPassword || !registerConfirmPassword || !registerPhone || !registerAddress) {
+      showToast('All fields are required.', 'danger')
+      return
+    }
+    if (registerPassword !== registerConfirmPassword) {
+      showToast('Passwords do not match.', 'danger')
+      return
+    }
+    try {
+      const res = await fetch('/api/admin/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: registerName,
+          username: registerEmail,
+          password: registerPassword,
+          phone: registerPhone,
+          address: registerAddress,
+          staff_role: staffRole
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        showToast('Staff Registration successful!', 'success')
+        setIsStaffModalOpen(false)
+        setRegisterName('')
+        setRegisterEmail('')
+        setRegisterPassword('')
+        setRegisterConfirmPassword('')
+        setRegisterPhone('')
+        setRegisterAddress('')
+        setStaffRole('Inventory Manager')
+        // Refresh staff list
+        const staffRes = await fetch('/api/admin/staff')
+        if (staffRes.ok) {
+          const staffData = await staffRes.json()
+          setStaffMembers(staffData)
+        }
+      } else {
+        showToast(data.error || 'Registration failed.', 'danger')
+      }
+    } catch {
+      showToast('Connection error during staff registration.', 'danger')
+    }
+  }
   const handleLogout = () => {
     localStorage.removeItem('currentUser')
     setCurrentUser(null)
-    setCart([])
+    activeCartTab === 'standard' ? setCart([]) : setBulkCart([])
     showToast('Signed out successfully.')
   }
 
@@ -1246,7 +1557,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: currentUser.email || (currentUser.role === 'admin' ? 'admin@sharadhastores.com' : ''),
+          email: currentUser.email || (currentUser.role === 'admin' ? 'sharadhastores4@gmail.com' : ''),
           role: currentUser.role,
           current_password: changePasswordCurrent,
           new_password: changePasswordNew
@@ -1269,7 +1580,7 @@ export default function App() {
   }
 
   const handleCheckoutClick = () => {
-    if (cart.length === 0) return
+    if ((activeCartTab === 'standard' ? cart : bulkCart).length === 0) return
     const isLegacyDefault = selectedCartAddressId === 'default';
     if (
       !cartAddressFlat.trim() ||
@@ -1287,7 +1598,7 @@ export default function App() {
   }
 
   const handleCheckout = async (chosenMethod) => {
-    if (cart.length === 0) return
+    if ((activeCartTab === 'standard' ? cart : bulkCart).length === 0) return
     const activeMethod = chosenMethod || 'COD';
     const isLegacyDefault = selectedCartAddressId === 'default';
     if (
@@ -1336,11 +1647,12 @@ export default function App() {
           body: JSON.stringify({
             customer_id: currentUser ? currentUser.customer_id : 1,
             message: combinedAddress,
-            items: cart.map((item) => ({
+            items: (activeCartTab === 'standard' ? cart : bulkCart).map((item) => ({
               product_id: item.product_id,
               price_id: item.price_id,
               quantity: item.quantity,
             })),
+            purchase_type: activeCartTab,
             payment_method: 'Razorpay',
           }),
         });
@@ -1372,7 +1684,7 @@ export default function App() {
                   paymentSuccessful = true;
                   setUpiPaymentModalDetails({ order_id: result.order_id });
                   setIsPaymentReceived(true);
-                  setCart([]);
+                  activeCartTab === 'standard' ? setCart([]) : setBulkCart([]);
                   showToast('Payment received! Order placed successfully.', 'success');
                   fetchData();
                   setTimeout(() => {
@@ -1443,19 +1755,20 @@ export default function App() {
         body: JSON.stringify({
           customer_id: currentUser ? currentUser.customer_id : 1,
           message: combinedAddress,
-          items: cart.map((item) => ({
+          items: (activeCartTab === 'standard' ? cart : bulkCart).map((item) => ({
             product_id: item.product_id,
             price_id: item.price_id,
             quantity: item.quantity,
           })),
           payment_method: 'COD',
+          purchase_type: activeCartTab,
         }),
       })
 
       const result = await response.json()
       if (response.ok) {
         setCheckoutStatus('success')
-        setCart([])
+        activeCartTab === 'standard' ? setCart([]) : setBulkCart([])
         setCodSuccessDetails({ order_id: result.order_id })
         showToast('Order placed successfully! Stocks updated via FEFO rules.', 'success')
         
@@ -1478,28 +1791,7 @@ export default function App() {
   }
 
   // Handle subscription signup
-  const handleSubscriptionSubmit = async (frequency) => {
-    if (!subscriptionProduct) return
-    try {
-      const res = await fetch('/api/subscriptions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_id: currentUser ? currentUser.customer_id : 1,
-          product_id: subscriptionProduct.product_id,
-          frequency,
-        }),
-      })
-      if (res.ok) {
-        showToast(`Subscribed to ${subscriptionProduct.name} successfully!`, 'success')
-        setSelectedCategory('All')
-        setSubscriptionProduct(null)
-        fetchData()
-      }
-    } catch {
-      showToast('Failed to create subscription.', 'danger')
-    }
-  }
+  
 
   // Handle direct custom order
   const handleDirectOrderSubmit = async (e) => {
@@ -2104,6 +2396,25 @@ export default function App() {
     }
   }
 
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Order status updated!', 'success');
+        fetchData();
+      } else {
+        showToast(data.error || 'Failed to update order status.', 'danger');
+      }
+    } catch {
+      showToast('Failed to update order status.', 'danger');
+    }
+  };
+
   // ---------------- REPORT EXPORT & PRINT LOGIC ----------------
 
   // Export current inventory spreadsheet CSV
@@ -2245,8 +2556,91 @@ export default function App() {
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Homemade Foods</p>
           </div>
 
-          <form onSubmit={isRegisterMode ? handleRegisterSubmit : handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-            {isRegisterMode ? (
+          <form onSubmit={isResetPasswordMode ? handleResetPasswordSubmit : isForgotPasswordMode ? handleForgotPasswordSubmit : isRegisterMode ? handleRegisterSubmit : handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+
+            {isResetPasswordMode ? (
+              <>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                  Please enter your email and a new password.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">Email Address</label>
+                  <input 
+                    type="email" 
+                    className="form-input" 
+                    value={forgotPasswordEmail} 
+                    onChange={(e) => setForgotPasswordEmail(e.target.value)} 
+                    required 
+                    placeholder="e.g. ramesh@gmail.com" 
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">New Password</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type={showResetPassword ? 'text' : 'password'} 
+                      className="form-input" 
+                      value={resetNewPassword} 
+                      onChange={(e) => setResetNewPassword(e.target.value)} 
+                      required 
+                      placeholder="••••••••" 
+                      style={{ paddingRight: '2.5rem' }}
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowResetPassword(!showResetPassword)}
+                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                    >
+                      {showResetPassword ? <svg style={{ width: '18px', height: '18px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg style={{ width: '18px', height: '18px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>}
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Confirm New Password</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type={showResetConfirmPassword ? 'text' : 'password'} 
+                      className="form-input" 
+                      value={resetConfirmPassword} 
+                      onChange={(e) => setResetConfirmPassword(e.target.value)} 
+                      required 
+                      placeholder="••••••••" 
+                      style={{ paddingRight: '2.5rem' }}
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowResetConfirmPassword(!showResetConfirmPassword)}
+                      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                    >
+                      {showResetConfirmPassword ? <svg style={{ width: '18px', height: '18px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg style={{ width: '18px', height: '18px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>}
+                    </button>
+                  </div>
+                </div>
+                <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: '0.5rem', padding: '0.85rem' }}>
+                  Update Password
+                </button>
+              </>
+            ) : isForgotPasswordMode ? (
+              <>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                  Enter your email address to receive a secure password reset link.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">Email Address</label>
+                  <input 
+                    type="email" 
+                    className="form-input" 
+                    value={forgotPasswordEmail} 
+                    onChange={(e) => setForgotPasswordEmail(e.target.value)} 
+                    required 
+                    placeholder="e.g. customer@gmail.com" 
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: '0.5rem', padding: '0.85rem' }}>
+                  Send Reset Link
+                </button>
+              </>
+            ) : isRegisterMode ? (
               <>
                 <div className="form-group">
                   <label className="form-label">Full Name</label>
@@ -2309,6 +2703,12 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.4rem' }}>
+                    <span onClick={() => setIsForgotPasswordMode(true)} style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', cursor: 'pointer', fontWeight: 500 }}>
+                      Forgot Password?
+                    </span>
+                  </div>
+
 
                 <div className="form-group">
                   <label className="form-label">Confirm Password</label>
@@ -2347,6 +2747,12 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.4rem' }}>
+                    <span onClick={() => setIsForgotPasswordMode(true)} style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', cursor: 'pointer', fontWeight: 500 }}>
+                      Forgot Password?
+                    </span>
+                  </div>
+
 
                 <div className="form-group">
                   <label className="form-label">Phone Number</label>
@@ -2429,6 +2835,12 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.4rem' }}>
+                    <span onClick={() => setIsForgotPasswordMode(true)} style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', cursor: 'pointer', fontWeight: 500 }}>
+                      Forgot Password?
+                    </span>
+                  </div>
+
 
                 <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: '0.5rem', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px' }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
@@ -2439,7 +2851,15 @@ export default function App() {
           </form>
 
           <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '1.25rem', marginBottom: 0 }}>
-            {isRegisterMode ? (
+
+            {isResetPasswordMode || isForgotPasswordMode ? (
+              <span 
+                onClick={() => { setIsResetPasswordMode(false); setIsForgotPasswordMode(false); setResetToken(''); }} 
+                style={{ color: 'var(--accent-primary)', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
+              >
+                Back to Sign In
+              </span>
+            ) : isRegisterMode ? (
               <>
                 Already have an account?{' '}
                 <span 
@@ -2515,7 +2935,7 @@ export default function App() {
                 <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                 {currentUser.name}
               </span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{currentUser.role}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{currentUser.staff_role || currentUser.role}</span>
             </div>
           )}
 
@@ -2685,8 +3105,93 @@ export default function App() {
                 }}
               >
                 <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-                {cart.length > 0 && (
-                  <div className="cart-badge">{cart.reduce((a, c) => a + c.quantity, 0)}</div>
+                {(cart.length > 0 || bulkCart.length > 0) && (
+                  <div className="cart-badge">
+                    {cart.reduce((a, c) => a + c.quantity, 0) + bulkCart.reduce((a, c) => a + c.quantity, 0)}
+                  </div>
+                )}
+                
+                {/* Mini Cart Popup */}
+                {miniCartItem && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 15px)',
+                    right: 0,
+                    width: '320px',
+                    background: 'var(--bg-card)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                    padding: '1.2rem',
+                    zIndex: 1000,
+                    animation: 'slideUpFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                    backdropFilter: 'blur(20px)'
+                  }}>
+                    {/* Triangle pointer */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '10px',
+                      width: '12px',
+                      height: '12px',
+                      background: 'var(--bg-card)',
+                      borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                      transform: 'rotate(45deg)',
+                      zIndex: -1
+                    }} />
+                    
+                    <div style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      color: 'var(--text-title)',
+                      textAlign: 'center',
+                      marginBottom: '1rem',
+                      fontWeight: 500
+                    }}>
+                      {(cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)) >= 580 
+                        ? 'Congratulations! You get free shipping!' 
+                        : `Spend ₹ ${(580 - (cart.reduce((sum, item) => sum + (item.price * item.quantity), 0))).toFixed(2)} more and get free shipping!`}
+                    </div>
+                    
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '1rem' }}>
+                      <img 
+                        src={miniCartItem.image_url || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=100&q=80"} 
+                        alt={miniCartItem.name} 
+                        style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-title)', marginBottom: '4px', lineHeight: '1.2' }}>
+                          {miniCartItem.name}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                          {miniCartItem.qty_desc}
+                        </div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                          ₹ {miniCartItem.price.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem', marginBottom: '1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-title)' }}>Total</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-title)' }}>
+                          ₹ {(miniCartItem.price * miniCartItem.quantity).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      className="btn btn-primary" 
+                      style={{ width: '100%', padding: '0.6rem', fontSize: '0.95rem' }}
+                      onClick={(e) => { e.stopPropagation(); setActiveTab('cart'); setMiniCartItem(null); }}
+                    >
+                      View cart
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -3393,18 +3898,33 @@ export default function App() {
               <div style={{ flex: '1.6 1 600px', display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: '0' }}>
                 {/* Cart Items List */}
                 <div className="glass-card" style={{ padding: '2.5rem 3rem', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
                     <div>
                       <h2 style={{ fontSize: '1.6rem', color: 'var(--text-title)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <svg style={{ width: '24px', height: '24px', color: 'var(--accent-primary)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
                         Your Shopping Cart
                       </h2>
                       <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Review your items and adjust quantities.</p>
+                      
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}>
+                        <button 
+                          className={`btn ${activeCartTab === 'standard' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+                          onClick={() => setActiveCartTab('standard')}
+                        >
+                          Standard Cart ({cart.length})
+                        </button>
+                        <button 
+                          className={`btn ${activeCartTab === 'bulk' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+                          onClick={() => setActiveCartTab('bulk')}
+                        >
+                          Bulk Order Cart ({bulkCart.length})
+                        </button>
+                      </div>
                     </div>
-                    {cart.length > 0 && (
+                    {(activeCartTab === 'standard' ? cart.length > 0 : bulkCart.length > 0) && (
                       <button 
                         className="btn btn-secondary btn-sm" 
-                        onClick={() => setCart([])}
+                        onClick={() => activeCartTab === 'standard' ? activeCartTab === 'standard' ? setCart([]) : setBulkCart([]) : setBulkCart([])}
                         style={{ border: '1px solid var(--accent-danger)', color: 'var(--accent-danger)', background: 'transparent', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
                         <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
@@ -3413,15 +3933,15 @@ export default function App() {
                     )}
                   </div>
 
-                  {cart.length === 0 ? (
+                  {(activeCartTab === 'standard' ? cart : bulkCart).length === 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '3rem 1rem', textAlign: 'center' }}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '64px', height: '64px', opacity: 0.3, color: 'var(--text-muted)' }}><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>Your shopping cart is empty.</p>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>Your {activeCartTab} cart is empty.</p>
                       <button className="btn btn-primary btn-sm" onClick={() => setActiveTab('ecommerce')}>Go to Storefront</button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                      {cart.map((item, idx) => (
+                      {(activeCartTab === 'standard' ? cart : bulkCart).map((item, idx) => (
                         <div 
                           key={idx} 
                           style={{ 
@@ -3449,7 +3969,7 @@ export default function App() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.4rem 0.8rem' }}>
                             <button 
                               className="cart-qty-btn" 
-                              onClick={() => updateCartQuantity(idx, -1)}
+                              onClick={() => activeCartTab === 'standard' ? updateCartQuantity(idx, -1) : updateBulkCartQuantity(idx, -1)}
                               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px' }}
                             >-</button>
                             <span style={{ fontWeight: 700, fontSize: '1rem', width: '25px', textAlign: 'center', color: 'var(--text-title)' }}>
@@ -3457,14 +3977,14 @@ export default function App() {
                             </span>
                             <button 
                               className="cart-qty-btn" 
-                              onClick={() => updateCartQuantity(idx, 1)}
+                              onClick={() => activeCartTab === 'standard' ? updateCartQuantity(idx, 1) : updateBulkCartQuantity(idx, 1)}
                               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px' }}
                             >+</button>
                           </div>
                           
                           <button 
                             className="btn btn-secondary btn-sm" 
-                            onClick={() => updateCartQuantity(idx, -item.quantity)}
+                            onClick={() => activeCartTab === 'standard' ? updateCartQuantity(idx, -item.quantity) : updateBulkCartQuantity(idx, -item.quantity)}
                             style={{ padding: '0.5rem', minWidth: 'auto', border: '1px solid var(--accent-danger)', color: 'var(--accent-danger)', background: 'rgba(255, 90, 95, 0.02)' }}
                             title="Remove item"
                           >
@@ -3477,7 +3997,7 @@ export default function App() {
                 </div>
 
                 {/* Delivery Address Card */}
-                {cart.length > 0 && (
+                {(activeCartTab === 'standard' ? cart : bulkCart).length > 0 && (
                   <div className="glass-card" style={{ padding: '2.5rem 3rem', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     {isCartAddressFormOpen ? (
                       /* Inline Address Form in Cart */
@@ -3623,25 +4143,53 @@ export default function App() {
               </div>
 
               {/* Right Column: Order Summary Card */}
-              {cart.length > 0 && (
+              {(activeCartTab === 'standard' ? cart : bulkCart).length > 0 && (
                 <div style={{ flex: '1 1 350px', position: 'sticky', top: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem', minWidth: '300px' }}>
                   <div className="glass-card" style={{ padding: '2.5rem 3rem', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     <h3 style={{ fontSize: '1.3rem', color: 'var(--text-title)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '0.25rem' }}>
                       Order Summary
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', color: 'var(--text-main)' }}>
-                        <span>Items Subtotal</span>
-                        <strong>Rs. {cart.reduce((a, c) => a + c.price * c.quantity, 0)}</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                        <span>Delivery Charges</span>
-                        <span style={{ color: 'var(--accent-secondary)', fontWeight: 600 }}>FREE</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', color: 'var(--text-title)', paddingTop: '1rem', borderTop: '1px solid var(--border-color)', marginTop: '0.5rem' }}>
-                        <span>Total Amount</span>
-                        <strong style={{ color: 'var(--accent-primary)' }}>Rs. {cart.reduce((a, c) => a + c.price * c.quantity, 0)}</strong>
-                      </div>
+                      {(() => {
+                        const activeItems = activeCartTab === 'standard' ? cart : bulkCart;
+                        const subtotal = activeItems.reduce((a, c) => a + c.price * c.quantity, 0);
+                        const discount = activeCartTab === 'bulk' ? subtotal * 0.10 : 0;
+                        const taxableAmount = subtotal - discount;
+                        const sgst = taxableAmount * 0.025;
+                        const cgst = taxableAmount * 0.025;
+                        const total = taxableAmount + sgst + cgst;
+                        
+                        return (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                              <span>Items Subtotal</span>
+                              <strong>Rs. {subtotal.toFixed(2)}</strong>
+                            </div>
+                            {activeCartTab === 'bulk' && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', color: 'var(--accent-secondary)' }}>
+                                <span>Bulk Discount (10%)</span>
+                                <strong>- Rs. {discount.toFixed(2)}</strong>
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                              <span>SGST (2.5%)</span>
+                              <span>Rs. {sgst.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                              <span>CGST (2.5%)</span>
+                              <span>Rs. {cgst.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                              <span>Delivery Charges</span>
+                              <span style={{ color: 'var(--accent-secondary)', fontWeight: 600 }}>FREE</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', color: 'var(--text-title)', paddingTop: '1rem', borderTop: '1px solid var(--border-color)', marginTop: '0.5rem' }}>
+                              <span>Total Amount</span>
+                              <strong style={{ color: 'var(--accent-primary)' }}>Rs. {total.toFixed(2)}</strong>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     <div style={{ marginTop: '1rem' }}>
@@ -3727,19 +4275,28 @@ export default function App() {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                             <div>
                               <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-title)' }}>Order #{order.order_id}</span>
-                              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginLeft: '1rem' }}>Placed on: {order.order_date}</span>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginLeft: '1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span>Placed on: {order.order_date ? formatDateDisplay(order.order_date.split(' ')[0]) : 'N/A'}</span>
+                                {order.dispatched_date && <span style={{ color: 'var(--accent-info)' }}>Dispatched on: {formatDateDisplay(order.dispatched_date.split(' ')[0])}</span>}
+                                {order.delivered_date && <span style={{ color: 'var(--accent-success)' }}>Delivered on: {formatDateDisplay(order.delivered_date.split(' ')[0])}</span>}
+                              </div>
                             </div>
-                            <span style={{ 
-                              background: order.status === 'Paid' ? 'rgba(46, 196, 182, 0.15)' : 'rgba(255, 159, 28, 0.15)',
-                              color: order.status === 'Paid' ? 'var(--accent-secondary)' : 'var(--accent-primary)',
-                              padding: '4px 12px',
-                              borderRadius: '12px',
-                              fontSize: '0.8rem',
-                              fontWeight: 700,
-                              textTransform: 'uppercase'
-                            }}>
-                              {order.status === 'Paid' ? 'Delivered' : 'Pending (COD)'}
-                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+                              <span style={{ 
+                                background: (order.status === 'Paid' || order.status === 'Delivered') ? 'rgba(46, 196, 182, 0.15)' : order.status === 'Dispatched' ? 'rgba(0, 180, 216, 0.15)' : 'rgba(255, 159, 28, 0.15)',
+                                color: (order.status === 'Paid' || order.status === 'Delivered') ? 'var(--accent-secondary)' : order.status === 'Dispatched' ? 'var(--accent-info)' : 'var(--accent-primary)',
+                                padding: '4px 12px',
+                                borderRadius: '12px',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase'
+                              }}>
+                                {order.status}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {order.payment_method === 'Razorpay' ? 'Online Payment (Razorpay)' : 'Cash on Delivery'}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Order Items */}
@@ -3765,6 +4322,8 @@ export default function App() {
                               {order.customer_address}
                             </p>
                           </div>
+
+
 
 
                         </div>
@@ -4297,10 +4856,10 @@ export default function App() {
           const thisMonthPrefix = `${currentYearStr}-${currentMonthStr}`;
 
           // Filter Paid orders for this month and whole year
-          const thisMonthOrders = orders.filter(o => o.status === 'Paid' && o.order_date.startsWith(thisMonthPrefix));
+          const thisMonthOrders = orders.filter(o => ['Paid', 'Dispatched', 'Delivered'].includes(o.status) && o.order_date.startsWith(thisMonthPrefix));
           const thisMonthRevenue = thisMonthOrders.reduce((sum, o) => sum + o.total_amount, 0);
 
-          const wholeYearOrders = orders.filter(o => o.status === 'Paid' && o.order_date.startsWith(currentYearStr));
+          const wholeYearOrders = orders.filter(o => ['Paid', 'Dispatched', 'Delivered'].includes(o.status) && o.order_date.startsWith(currentYearStr));
           const wholeYearRevenue = wholeYearOrders.reduce((sum, o) => sum + o.total_amount, 0);
 
           const annualOrdersCount = wholeYearOrders.length;
@@ -4448,12 +5007,29 @@ export default function App() {
             };
           });
 
+          // Sales Rep Metrics Calculation
+          const todayStr = new Date().toISOString().split('T')[0];
+          const todayOrders = orders.filter(o => o.order_date && o.order_date.startsWith(todayStr));
+          
+          const salesRepOrdersTodayCount = todayOrders.length;
+          const salesRepRevenueToday = todayOrders.filter(o => ['Paid', 'Dispatched', 'Delivered'].includes(o.status)).reduce((sum, o) => sum + o.total_amount, 0);
+          const salesRepTodayDispatched = orders.filter(o => (o.status === 'Dispatched' || o.status === 'Delivered') && o.dispatched_date && o.dispatched_date.startsWith(todayStr)).length;
+
+          const salesRepTotalOrdersCount = orders.length;
+          const salesRepTotalRevenue = orders.filter(o => ['Paid', 'Dispatched', 'Delivered'].includes(o.status)).reduce((sum, o) => sum + o.total_amount, 0);
+          const salesRepTotalDispatched = orders.filter(o => o.status === 'Dispatched' || o.status === 'Delivered').length;
+
           return (
             <div className="animate-fade-in admin-layout-container">
               {/* Sidebar column (left) */}
               <div className="glass-card admin-sidebar">
-                <h2 style={{ margin: 0, fontSize: '1.35rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.85rem' }}>Administrator Portal</h2>
+                <h2 style={{ margin: 0, fontSize: '1.35rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.85rem' }}>
+                  {currentUser?.staff_role === 'Inventory Manager' ? 'Inventory Manager Portal' : 
+                   currentUser?.staff_role === 'Sales Rep' ? 'Sales Representative Portal' : 
+                   'Administrator Portal'}
+                </h2>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin' || currentUser?.staff_role === 'Inventory Manager' || currentUser?.staff_role === 'Dispatch Team' || currentUser?.staff_role === 'Sales Rep') && (
                   <button
                     className={`sidebar-tab-btn ${adminSubTab === 'dashboard' ? 'active' : ''}`}
                     onClick={() => setAdminSubTab('dashboard')}
@@ -4461,13 +5037,26 @@ export default function App() {
                     <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                     Dashboard
                   </button>
-                  <button
-                    className={`sidebar-tab-btn ${adminSubTab === 'orders' ? 'active' : ''}`}
-                    onClick={() => setAdminSubTab('orders')}
-                  >
-                    <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-                    Customer Orders
-                  </button>
+                  )}
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin' || currentUser?.staff_role === 'Dispatch Team' || currentUser?.staff_role === 'Customer Support' || currentUser?.staff_role === 'Sales Rep') && (
+                  <>
+                    <button
+                      className={`sidebar-tab-btn ${adminSubTab === 'orders' ? 'active' : ''}`}
+                      onClick={() => setAdminSubTab('orders')}
+                    >
+                      <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                      Customer Orders
+                    </button>
+                    <button
+                      className={`sidebar-tab-btn ${adminSubTab === 'bulk-orders' ? 'active' : ''}`}
+                      onClick={() => setAdminSubTab('bulk-orders')}
+                    >
+                      <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                      Bulk Orders
+                    </button>
+                  </>
+                  )}
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin' || currentUser?.staff_role === 'Inventory Manager') && (
                   <button
                     className={`sidebar-tab-btn ${adminSubTab === 'batches' ? 'active' : ''}`}
                     onClick={() => setAdminSubTab('batches')}
@@ -4475,6 +5064,8 @@ export default function App() {
                     <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
                     Production Batches
                   </button>
+                  )}
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin' || currentUser?.staff_role === 'Inventory Manager') && (
                   <button
                     className={`sidebar-tab-btn ${adminSubTab === 'catalog' ? 'active' : ''}`}
                     onClick={() => setAdminSubTab('catalog')}
@@ -4482,6 +5073,8 @@ export default function App() {
                     <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
                     Catalog
                   </button>
+                  )}
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin') && (
                   <button
                     className={`sidebar-tab-btn ${adminSubTab === 'simulations' ? 'active' : ''}`}
                     onClick={() => setAdminSubTab('simulations')}
@@ -4489,6 +5082,8 @@ export default function App() {
                     <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                     API Simulations
                   </button>
+                  )}
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin' || currentUser?.staff_role === 'Inventory Manager') && (
                   <button
                     className={`sidebar-tab-btn ${adminSubTab === 'alerts' ? 'active' : ''}`}
                     onClick={() => setAdminSubTab('alerts')}
@@ -4496,6 +5091,8 @@ export default function App() {
                     <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                     Priority Alerts
                   </button>
+                  )}
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin') && (
                   <button
                     className={`sidebar-tab-btn ${adminSubTab === 'analytics' ? 'active' : ''}`}
                     onClick={() => setAdminSubTab('analytics')}
@@ -4503,6 +5100,16 @@ export default function App() {
                     <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line><line x1="2" y1="20" x2="22" y2="20"></line></svg>
                     Sales Analytics
                   </button>
+                  )}
+                  {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin') && (
+                  <button
+                    className={`sidebar-tab-btn ${adminSubTab === 'team' ? 'active' : ''}`}
+                    onClick={() => setAdminSubTab('team')}
+                  >
+                    <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Team Management
+                  </button>
+                  )}
                 </div>
               </div>
 
@@ -4525,6 +5132,7 @@ export default function App() {
                     </div>
                   </div>
                   <div className="dashboard-grid">
+              {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin') && (
               <div 
                 className="glass-card stat-card" 
                 style={{ borderLeft: '3px solid var(--accent-secondary)', cursor: 'pointer' }}
@@ -4539,7 +5147,11 @@ export default function App() {
                 </div>
                 <div className="stat-icon" style={{ color: 'var(--accent-secondary)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
               </div>
+              )}
 
+              {/* Inventory specific stat cards */}
+              {currentUser?.staff_role !== 'Sales Rep' && (
+                <>
               <div 
                 className="glass-card stat-card" 
                 style={{ cursor: 'pointer' }}
@@ -4595,8 +5207,66 @@ export default function App() {
                 </div>
                 <div className="stat-icon" style={{ color: 'var(--text-muted)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></div>
               </div>
+                </>
+              )}
+
+              {/* Sales Rep specific stat cards */}
+              {currentUser?.staff_role === 'Sales Rep' && (
+                <>
+                  <div className="glass-card stat-card" onClick={() => setAdminSubTab('orders')} style={{ cursor: 'pointer', borderLeft: '3px solid var(--accent-secondary)' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Total Revenue</div>
+                      <div className="stat-num" style={{ color: 'var(--accent-secondary)' }}>Rs. {salesRepTotalRevenue.toLocaleString()}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-secondary)' }}>Overall paid orders</div>
+                    </div>
+                    <div className="stat-icon" style={{ color: 'var(--accent-secondary)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+                  </div>
+                  <div className="glass-card stat-card" onClick={() => setAdminSubTab('orders')} style={{ cursor: 'pointer', borderLeft: '3px solid var(--accent-secondary)' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Total Orders</div>
+                      <div className="stat-num" style={{ color: 'var(--accent-secondary)' }}>{salesRepTotalOrdersCount}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-secondary)' }}>Overall placed</div>
+                    </div>
+                    <div className="stat-icon" style={{ color: 'var(--accent-secondary)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg></div>
+                  </div>
+                  <div className="glass-card stat-card" onClick={() => setAdminSubTab('orders')} style={{ cursor: 'pointer', borderLeft: '3px solid var(--accent-secondary)' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Total Dispatched</div>
+                      <div className="stat-num" style={{ color: 'var(--accent-secondary)' }}>{salesRepTotalDispatched}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-secondary)' }}>Overall dispatched/delivered</div>
+                    </div>
+                    <div className="stat-icon" style={{ color: 'var(--accent-secondary)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></div>
+                  </div>
+
+                  <div className="glass-card stat-card" onClick={() => setAdminSubTab('orders')} style={{ cursor: 'pointer', borderLeft: '3px solid var(--accent-primary)' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Revenue Today</div>
+                      <div className="stat-num" style={{ color: 'var(--accent-primary)' }}>Rs. {salesRepRevenueToday.toLocaleString()}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-primary)' }}>Paid orders today</div>
+                    </div>
+                    <div className="stat-icon" style={{ color: 'var(--accent-primary)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+                  </div>
+                  <div className="glass-card stat-card" onClick={() => setAdminSubTab('orders')} style={{ cursor: 'pointer', borderLeft: '3px solid var(--accent-info)' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Orders Today</div>
+                      <div className="stat-num" style={{ color: 'var(--accent-info)' }}>{salesRepOrdersTodayCount}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-info)' }}>Placed today</div>
+                    </div>
+                    <div className="stat-icon" style={{ color: 'var(--accent-info)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg></div>
+                  </div>
+                  <div className="glass-card stat-card" onClick={() => setAdminSubTab('orders')} style={{ cursor: 'pointer', borderLeft: '3px solid var(--accent-success)' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Dispatched Today</div>
+                      <div className="stat-num" style={{ color: 'var(--accent-success)' }}>{salesRepTodayDispatched}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-success)' }}>In transit today</div>
+                    </div>
+                    <div className="stat-icon" style={{ color: 'var(--accent-success)' }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></div>
+                  </div>
+                </>
+              )}
             </div>
                   
+                  {currentUser?.staff_role !== 'Sales Rep' && (
                   <div className="dashboard-sections" style={{ marginTop: '2rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', width: '100%' }}>
                                       <div className="glass-card">
@@ -4649,6 +5319,7 @@ export default function App() {
                 </div>
                     </div>
                   </div>
+                  )}
                 </>
               )}
 
@@ -4656,8 +5327,10 @@ export default function App() {
               <div className="glass-card animate-slide-up" style={{ marginTop: '2rem' }} id="customer-orders-section">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
                   <h2 style={{ margin: 0 }}>Customer Orders</h2>
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
-                    <input
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <input
                       type="text"
                       placeholder="Search orders..."
                       value={orderSearchQuery}
@@ -4680,6 +5353,7 @@ export default function App() {
                       <circle cx="11" cy="11" r="8"></circle>
                       <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
+                  </div>
                   </div>
                 </div>
                 <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
@@ -4704,6 +5378,7 @@ export default function App() {
                       <tbody>
                         {[...orders]
                           .filter((ord) => {
+                            if (ord.order_type === 'bulk') return false;
                             if (!orderSearchQuery) return true;
                             const q = orderSearchQuery.toLowerCase();
                             const orderIdStr = String(ord.order_id);
@@ -4726,7 +5401,14 @@ export default function App() {
                           .sort((a, b) => a.order_id - b.order_id)
                           .map((ord) => (
                             <tr key={ord.order_id}>
-                              <td><strong>{ord.order_id}</strong></td>
+                              <td>
+                                <strong>#{ord.order_id}</strong>
+                                {ord.order_type === 'bulk' && (
+                                  <div style={{ marginTop: '4px' }}>
+                                    <span style={{ fontSize: '0.65rem', padding: '2px 4px', background: 'var(--accent-secondary)', color: 'var(--bg-primary)', borderRadius: '3px', fontWeight: 'bold' }}>BULK</span>
+                                  </div>
+                                )}
+                              </td>
                               <td>
                                 <div><strong>{ord.customer_name}</strong></div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ord.customer_phone || ord.customer_email}</div>
@@ -4746,21 +5428,35 @@ export default function App() {
                               <td style={{ textAlign: 'center' }}>
                                 <strong>{ord.items ? ord.items.reduce((acc, item) => acc + item.quantity, 0) : 0}</strong>
                               </td>
-                              <td><strong>Rs. {ord.total_amount}</strong></td>
+                              <td>
+                                <strong>Rs. {ord.total_amount}</strong>
+                                {ord.tax_amount > 0 && (
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                    + Tax: Rs. {ord.tax_amount}
+                                  </div>
+                                )}
+                                {ord.discount_amount > 0 && (
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--accent-secondary)', marginTop: '2px' }}>
+                                    - Disc: Rs. {ord.discount_amount}
+                                  </div>
+                                )}
+                              </td>
                               <td style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
                                 {ord.payment_method || 'N/A'}
                               </td>
                               <td style={{ fontSize: '0.8rem' }}>
-                                {ord.order_date ? formatDateDisplay(ord.order_date.split(' ')[0]) : 'N/A'}
+                                <div><strong style={{color: 'var(--text-muted)'}}>Placed:</strong> {ord.order_date ? formatDateDisplay(ord.order_date.split(' ')[0]) : 'N/A'}</div>
+                                {ord.dispatched_date && <div><strong style={{color: 'var(--accent-info)'}}>Dispatched:</strong> {formatDateDisplay(ord.dispatched_date.split(' ')[0])}</div>}
+                                {ord.delivered_date && <div><strong style={{color: 'var(--accent-success)'}}>Delivered:</strong> {formatDateDisplay(ord.delivered_date.split(' ')[0])}</div>}
                               </td>
                               <td>
-                                <span className={`badge ${ord.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>
+                                <span className={`badge ${ord.status === 'Delivered' ? 'badge-success' : ord.status === 'Dispatched' ? 'badge-info' : ord.status === 'Paid' ? 'badge-primary' : 'badge-warning'}`}>
                                   {ord.status}
                                 </span>
                               </td>
                               <td>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  {ord.status === 'Pending' ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  {ord.status === 'Pending' && (
                                     <button
                                       className="btn btn-primary btn-sm"
                                       onClick={() => handleFulfillOrder(ord.order_id)}
@@ -4769,7 +5465,209 @@ export default function App() {
                                       <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                       Fulfill
                                     </button>
-                                  ) : (
+                                  )}
+                                  {ord.status === 'Paid' && (
+                                    <button className="btn btn-secondary btn-sm" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleUpdateOrderStatus(ord.order_id, 'Dispatched')}>
+                                      Mark as Dispatched
+                                    </button>
+                                  )}
+                                  {ord.status === 'Dispatched' && (
+                                    <button className="btn btn-primary btn-sm" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleUpdateOrderStatus(ord.order_id, 'Delivered')}>
+                                      Mark as Delivered
+                                    </button>
+                                  )}
+                                  {ord.status === 'Delivered' && (
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Completed</span>
+                                  )}
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => handleDeleteOrder(ord.order_id)}
+                                    title="Delete Order"
+                                    style={{
+                                      padding: '0.25rem 0.5rem',
+                                      fontSize: '0.75rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      background: 'rgba(255, 90, 95, 0.12)',
+                                      border: '1px solid rgba(255, 90, 95, 0.2)',
+                                      color: 'var(--accent-danger)',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <svg style={{ width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="3 6 5 6 21 6"></polyline>
+                                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                                    </svg>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+
+              {adminSubTab === 'bulk-orders' && (
+              <div className="glass-card animate-slide-up" style={{ marginTop: '2rem' }} id="customer-orders-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
+                  <h2 style={{ margin: 0 }}>Bulk Orders</h2>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    
+                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                      <input
+                      type="text"
+                      placeholder="Search orders..."
+                      value={orderSearchQuery}
+                      onChange={(e) => setOrderSearchQuery(e.target.value)}
+                      style={{
+                        padding: '0.4rem 0.8rem',
+                        paddingLeft: '2rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        color: 'var(--text-main)',
+                        fontSize: '0.85rem',
+                        outline: 'none',
+                        minWidth: '200px',
+                        backdropFilter: 'blur(5px)',
+                        transition: 'all 0.3s ease'
+                      }}
+                    />
+                    <svg style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text-muted)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </div>
+                  </div>
+                </div>
+                <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                  {orders.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No orders placed yet.</p>
+                  ) : (
+                    <table className="premium-table">
+                      <thead>
+                        <tr>
+                          <th>Order No</th>
+                          <th>Customer</th>
+                          <th>Address</th>
+                          <th>Items</th>
+                          <th>Quantity</th>
+                          <th>Total</th>
+                          <th>Method</th>
+                          <th>Date</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...orders]
+                          .filter((ord) => {
+                            if (ord.order_type !== 'bulk') return false;
+                            if (!orderSearchQuery) return true;
+                            const q = orderSearchQuery.toLowerCase();
+                            const orderIdStr = String(ord.order_id);
+                            const customerName = ord.customer_name?.toLowerCase() || '';
+                            const customerAddress = ord.customer_address?.toLowerCase() || '';
+                            const paymentMethod = ord.payment_method?.toLowerCase() || '';
+                            const status = ord.status?.toLowerCase() || '';
+                            const phoneOrEmail = (ord.customer_phone || ord.customer_email || '').toLowerCase();
+                            const itemsText = ord.items ? ord.items.map(it => it.product_name.toLowerCase()).join(' ') : '';
+                            return (
+                              orderIdStr.includes(q) ||
+                              customerName.includes(q) ||
+                              customerAddress.includes(q) ||
+                              paymentMethod.includes(q) ||
+                              status.includes(q) ||
+                              phoneOrEmail.includes(q) ||
+                              itemsText.includes(q)
+                            );
+                          })
+                          .sort((a, b) => a.order_id - b.order_id)
+                          .map((ord) => (
+                            <tr key={ord.order_id}>
+                              <td>
+                                <strong>#{ord.order_id}</strong>
+                                {ord.order_type === 'bulk' && (
+                                  <div style={{ marginTop: '4px' }}>
+                                    <span style={{ fontSize: '0.65rem', padding: '2px 4px', background: 'var(--accent-secondary)', color: 'var(--bg-primary)', borderRadius: '3px', fontWeight: 'bold' }}>BULK</span>
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <div><strong>{ord.customer_name}</strong></div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ord.customer_phone || ord.customer_email}</div>
+                              </td>
+                              <td>
+                                <div style={{ fontSize: '0.8rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ord.customer_address}>
+                                  {ord.customer_address || 'N/A'}
+                                </div>
+                              </td>
+                              <td style={{ fontSize: '0.8rem' }}>
+                                {ord.items && ord.items.map((it, idx) => (
+                                  <div key={idx}>
+                                    {it.product_name} ({it.quantity_description}) x {it.quantity}
+                                  </div>
+                                ))}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <strong>{ord.items ? ord.items.reduce((acc, item) => acc + item.quantity, 0) : 0}</strong>
+                              </td>
+                              <td>
+                                <strong>Rs. {ord.total_amount}</strong>
+                                {ord.tax_amount > 0 && (
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                    + Tax: Rs. {ord.tax_amount}
+                                  </div>
+                                )}
+                                {ord.discount_amount > 0 && (
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--accent-secondary)', marginTop: '2px' }}>
+                                    - Disc: Rs. {ord.discount_amount}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                                {ord.payment_method || 'N/A'}
+                              </td>
+                              <td style={{ fontSize: '0.8rem' }}>
+                                <div><strong style={{color: 'var(--text-muted)'}}>Placed:</strong> {ord.order_date ? formatDateDisplay(ord.order_date.split(' ')[0]) : 'N/A'}</div>
+                                {ord.dispatched_date && <div><strong style={{color: 'var(--accent-info)'}}>Dispatched:</strong> {formatDateDisplay(ord.dispatched_date.split(' ')[0])}</div>}
+                                {ord.delivered_date && <div><strong style={{color: 'var(--accent-success)'}}>Delivered:</strong> {formatDateDisplay(ord.delivered_date.split(' ')[0])}</div>}
+                              </td>
+                              <td>
+                                <span className={`badge ${ord.status === 'Delivered' ? 'badge-success' : ord.status === 'Dispatched' ? 'badge-info' : ord.status === 'Paid' ? 'badge-primary' : 'badge-warning'}`}>
+                                  {ord.status}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  {ord.status === 'Pending' && (
+                                    <button
+                                      className="btn btn-primary btn-sm"
+                                      onClick={() => handleFulfillOrder(ord.order_id)}
+                                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                      Fulfill
+                                    </button>
+                                  )}
+                                  {ord.status === 'Paid' && (
+                                    <button className="btn btn-secondary btn-sm" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleUpdateOrderStatus(ord.order_id, 'Dispatched')}>
+                                      Mark as Dispatched
+                                    </button>
+                                  )}
+                                  {ord.status === 'Dispatched' && (
+                                    <button className="btn btn-primary btn-sm" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => handleUpdateOrderStatus(ord.order_id, 'Delivered')}>
+                                      Mark as Delivered
+                                    </button>
+                                  )}
+                                  {ord.status === 'Delivered' && (
                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Completed</span>
                                   )}
                                   <button
@@ -4813,6 +5711,7 @@ export default function App() {
                  <div className="glass-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '10px' }}>
                     <h2 style={{ margin: 0 }}>Create Production Batch</h2>
+                    {(!currentUser?.staff_role || currentUser?.staff_role === 'Super Admin') && (
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
@@ -4825,6 +5724,7 @@ export default function App() {
                       <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                       New Product
                     </button>
+                    )}
                   </div>
                   
                   <form onSubmit={handleCreateBatchSubmit}>
@@ -5780,6 +6680,72 @@ export default function App() {
         </>
                 </div>
               )}
+              {adminSubTab === 'team' && (
+                <div style={{ marginTop: '1rem' }}>
+                  <div className="glass-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                      <h2 style={{ margin: 0 }}>Staff & Team Management</h2>
+                      <button className="btn btn-primary" onClick={() => {
+                        setIsRegisterMode(true);
+                        setRegisterName('');
+                        setRegisterEmail('');
+                        setRegisterPassword('');
+                        setRegisterConfirmPassword('');
+                        setRegisterPhone('');
+                        setRegisterAddress('');
+                        setIsStaffModalOpen(true);
+                      }}>
+                        Register New Staff
+                      </button>
+                    </div>
+                    <div className="table-responsive">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Staff ID</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Contact Email</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {staffMembers.length > 0 ? (
+                            staffMembers.map((staff, index) => (
+                              <tr key={staff.username}>
+                                <td>#{index + 1}</td>
+                                <td>{staff.name}</td>
+                                <td><span className="badge badge-info" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}>{staff.staff_role}</span></td>
+                                <td>{staff.username}</td>
+                                <td>
+                                  <button className="btn btn-secondary btn-sm" style={{ marginRight: '0.5rem' }} onClick={() => {
+                                    showToast('Edit staff is not implemented yet.', 'info');
+                                  }}>Edit</button>
+                                  <button className="btn btn-secondary btn-sm" style={{ color: 'var(--danger-color)' }} onClick={async () => {
+                                    if(window.confirm('Delete this staff member?')) {
+                                      const res = await fetch(`/api/admin/staff/${staff.username}`, { method: 'DELETE' });
+                                      if(res.ok) {
+                                        setStaffMembers(staffMembers.filter(s => s.username !== staff.username));
+                                        showToast('Staff deleted.', 'success');
+                                      } else {
+                                        showToast('Failed to delete.', 'danger');
+                                      }
+                                    }
+                                  }}>Delete</button>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan="5" style={{ textAlign: 'center' }}>No staff members found.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
               </div>
             </div>
   )})()}
@@ -5787,6 +6753,105 @@ export default function App() {
       </main>
 
       {/* ==================== MODALS & DRAWERS ==================== */}
+
+      {/* Staff Registration Modal */}
+      {isStaffModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsStaffModalOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Register New Staff</h2>
+              <button className="btn btn-secondary btn-sm" onClick={() => setIsStaffModalOpen(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.25rem' }}>
+                <svg style={{ width: '10px', height: '10px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <form onSubmit={handleStaffRegisterSubmit} className="modal-body">
+              <div className="form-inline-group">
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={registerName}
+                    onChange={(e) => setRegisterName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email Address *</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    value={registerEmail}
+                    onChange={(e) => setRegisterEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="form-inline-group">
+                <div className="form-group">
+                  <label className="form-label">Password *</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Confirm Password *</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    value={registerConfirmPassword}
+                    onChange={(e) => setRegisterConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="form-inline-group">
+                <div className="form-group">
+                  <label className="form-label">Phone Number *</label>
+                  <input
+                    type="tel"
+                    className="form-input"
+                    value={registerPhone}
+                    onChange={(e) => setRegisterPhone(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Staff Role *</label>
+                  <select
+                    className="form-input"
+                    value={staffRole}
+                    onChange={(e) => setStaffRole(e.target.value)}
+                    required
+                  >
+                    <option value="Inventory Manager">Inventory Manager</option>
+                    <option value="Sales Rep">Sales Rep</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Address *</label>
+                <textarea
+                  className="form-input"
+                  value={registerAddress}
+                  onChange={(e) => setRegisterAddress(e.target.value)}
+                  rows="2"
+                  required
+                ></textarea>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsStaffModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Register Staff</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 1. Recipe Serving Suggestion Modal */}
       {selectedProductForRecipe && (
@@ -6551,36 +7616,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. Subscription Frequency Selector Modal */}
-      {subscriptionProduct && (
-        <div className="modal-overlay" onClick={() => setSubscriptionProduct(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Subscribe to {subscriptionProduct.name}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setSubscriptionProduct(null)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.25rem' }}><svg style={{ width: '10px', height: '10px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
-            </div>
-            <div className="modal-body" style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                Receive fresh batches automatically at your doorstep. Pause or cancel anytime.
-              </p>
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                <button className="btn btn-primary" onClick={() => handleSubscriptionSubmit('Weekly')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                  Deliver Weekly
-                </button>
-                <button className="btn btn-primary" onClick={() => handleSubscriptionSubmit('Bi-Weekly')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                  Deliver Bi-Weekly
-                </button>
-                <button className="btn btn-primary" onClick={() => handleSubscriptionSubmit('Monthly')} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <svg style={{ width: '12px', height: '12px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                  Deliver Monthly
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* 3. Direct Order Form Modal */}
       {orderProduct && orderActivePrice && (
@@ -6856,7 +7892,6 @@ export default function App() {
               }
             }}
             title="AI Assistant"
-            style={{ position: 'relative' }}
           >
             {isChatOpen ? (
               <svg style={{ width: '24px', height: '24px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

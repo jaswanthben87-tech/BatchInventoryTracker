@@ -673,6 +673,7 @@ h1, h2, h3, h4, h5, h6 {
 .badge-warning { background: rgba(255, 159, 28, 0.12); color: var(--accent-primary); border: 1px solid rgba(255, 159, 28, 0.2); }
 .badge-danger { background: rgba(255, 90, 95, 0.12); color: var(--accent-danger); border: 1px solid rgba(255, 90, 95, 0.2); }
 .badge-info { background: rgba(0, 180, 216, 0.12); color: var(--accent-info); border: 1px solid rgba(0, 180, 216, 0.2); }
+.badge-primary { background: rgba(139, 92, 246, 0.12); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.2); }
 
 /* Dashboard layouts */
 .dashboard-grid {
@@ -1471,7 +1472,7 @@ body.light-theme .category-share-item:hover {
 }
 
 .carousel-card-wrapper {
-  flex: 0 0 calc(25% - 1.3125rem); /* Exactly 4 columns with 1.75rem gaps */
+  flex: 0 0 calc(16.666% - 1.46rem); /* exactly 6 columns with 1.75rem gaps */
   box-sizing: border-box;
 }
 
@@ -1495,9 +1496,7 @@ body.light-theme .category-share-item:hover {
 
 /* Scroll buttons styling */
 .carousel-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+  flex-shrink: 0;
   z-index: 10;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
@@ -1516,14 +1515,6 @@ body.light-theme .category-share-item:hover {
 .carousel-btn:hover {
   background: rgba(255, 159, 28, 0.12);
   border-color: var(--accent-primary);
-}
-
-.carousel-btn-prev {
-  left: 0;
-}
-
-.carousel-btn-next {
-  right: 0;
 }
 
 /* Hide scroll buttons on mobile/tablet because touch swipe is preferred and layout is narrow */
@@ -1839,3 +1830,58 @@ body.light-theme .chat-widget-container {
     box-shadow: 0 0 0 0 rgba(255, 90, 95, 0);
   }
 }
+
+@keyframes pulseGlow {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 4px rgba(255, 159, 28, 0.4);
+  }
+  100% {
+    transform: scale(1.15);
+    box-shadow: 0 0 18px rgba(255, 159, 28, 0.9);
+  }
+}
+
+.animate-pulse-highlight {
+  animation: pulseGlow 1.2s infinite alternate !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 12px rgba(255, 159, 28, 0.6) !important;
+}
+
+@keyframes slideInUp {
+  0% {
+    transform: translateY(80px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-up {
+  animation: slideInUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Subscription Dashboard & Bulk Orders */
+.status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.status-active {
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+.status-paused {
+  background: rgba(241, 196, 15, 0.2);
+  color: #f1c40f;
+}
+.status-cancelled {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
+
