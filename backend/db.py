@@ -28,6 +28,7 @@ elif IS_MYSQL:
     from mysql.connector.pooling import MySQLConnectionPool
     try:
         parsed = urlparse(DATABASE_URL)
+        query_params = parse_qs(parsed.query)
         pool_config = {
             'host': parsed.hostname,
             'user': parsed.username,
@@ -35,8 +36,11 @@ elif IS_MYSQL:
             'port': parsed.port or 3306,
             'database': parsed.path.lstrip('/'),
             'pool_name': 'sharadha_mysql_pool',
-            'pool_size': 5
+            'pool_size': 2
         }
+        if 'ssl-mode' in query_params or 'REQUIRED' in DATABASE_URL:
+            pool_config['ssl_disabled'] = False
+            pool_config['ssl_verify_identity'] = False
         mysql_pool = MySQLConnectionPool(**pool_config)
     except Exception as e:
         print(f"Error initializing MySQL Connection Pool: {e}")
@@ -151,6 +155,7 @@ def connect_mysql():
             print(f"Failed to get pooled connection: {e}")
             
     parsed = urlparse(DATABASE_URL)
+    query_params = parse_qs(parsed.query)
     config = {
         'host': parsed.hostname,
         'user': parsed.username,
@@ -158,6 +163,9 @@ def connect_mysql():
         'port': parsed.port or 3306,
         'database': parsed.path.lstrip('/')
     }
+    if 'ssl-mode' in query_params or 'REQUIRED' in DATABASE_URL:
+        config['ssl_disabled'] = False
+        config['ssl_verify_identity'] = False
     conn = mysql.connector.connect(**config)
     return conn
 
